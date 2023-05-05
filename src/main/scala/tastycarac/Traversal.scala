@@ -1,4 +1,4 @@
-package pointsto
+package tastycarac
 
 import tastyquery.Trees.Tree
 import tastyquery.Trees.*

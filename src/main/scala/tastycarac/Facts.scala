@@ -1,4 +1,4 @@
-package pointsto
+package tastycarac
 
 import tastyquery.Symbols.TermSymbol
 
@@ -8,18 +8,20 @@ import scala.util.Using
 import java.io.FileWriter
 import java.nio.file.Path
 import java.io.BufferedWriter
-
-type Variable = String // variable
-type Heap = String // allocation site (== memory location, kind of)
-type Method = String
-type Signature = String
-type Field = String
-type Instruction =
-  String // TODO instruction does not make much sense in Scala???
-type Type = String
-type Index = String
+import scala.util.Try
+import scala.util.Success
+import scala.util.Failure
 
 object Facts {
+  type Variable = String
+  type Heap = String // allocation site
+  type Method = String
+  type Signature = String
+  type Field = String
+  type Instruction = String
+  type Type = String
+  type Index = String
+
   abstract class Fact extends Product
 
   // val v = new ... (heap is the allocation site, inMeth is the method)
@@ -54,7 +56,7 @@ object Facts {
   // val varr = somemethod(...) at #invo (there must be a matching vcall)
   case class ActualReturn(invo: Instruction, varr: Variable) extends Fact
 
-  // ???
+  // indicates the full path of this in meth
   case class ThisVar(meth: Method, thiss: Variable) extends Fact
 
   // allocation site heap has type typee
@@ -62,12 +64,6 @@ object Facts {
 
   // link between a method signature and an actual method definition
   case class LookUp(typee: Type, sig: Signature, meth: Method) extends Fact
-
-  // TODO VarType
-  // TODO InMethod
-  // TODO SubType
-
-  // INTERMEDIATE RELATIONS
 
   // final result
   case class VarPointsTo(varr: Variable, heap: Heap) extends Fact
@@ -84,22 +80,23 @@ object Facts {
   // meth is reachable (we should always have Reachable(@main))
   case class Reachable(meth: Method) extends Fact
 
-  def save(facts: Seq[Fact], output: Path): Unit = {
-    val grouped = facts.groupBy(_.productPrefix)
+  def exportFacts(facts: Seq[Fact], output: Path): Try[Unit] =
+    facts
+      .groupBy(_.productPrefix)
+      .foldLeft[Try[Unit]](Success(()))((res, cur) =>
+        res.flatMap(_ =>
+          exportRelation(output.resolve(f"${cur._1}.csv"), cur._2)
+        )
+      )
 
-    for ((relation, facts) <- grouped) {
-      for (f <- facts) println(f)
+  private def exportRelation(path: Path, facts: Seq[Fact]): Try[Unit] =
+    Using(Files.newBufferedWriter(path)) { writer =>
+      writer.write(facts.head.productIterator.map(_ => "String").mkString("\t"))
+      writer.write("\n")
 
-      val path = output.resolve(f"${relation}.csv")
-      Using(Files.newBufferedWriter(path)) { writer =>
-        writer.write(facts.head.productIterator.map(_ => "String").mkString("\t"))
+      for (f <- facts) {
+        writer.write(f.productIterator.mkString("\t"))
         writer.write("\n")
-
-        for (f <- facts) {
-          writer.write(f.productIterator.mkString("\t"))
-          writer.write("\n")
-        }
       }
     }
-  }
 }

@@ -1,4 +1,4 @@
-package pointsto
+package tastycarac
 
 import tastyquery.Symbols.ClassSymbol
 import tastyquery.Contexts.Context
@@ -11,33 +11,38 @@ import tastyquery.Types.TypeRef
 import Facts.*
 import tastyquery.Types.ErasedTypeRef
 import tastyquery.Types.PackageRef
-// import tastyquery.Contexts.ctx
+import tastyquery.Contexts.ctx
+import tastyquery.Names.Name
+import tastyquery.Names.SimpleName
 
-class Andersen()(using Context) {
+class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
   var instructionId = 0
   var tempVarId = 0
   var allocationId = 0
 
-  def getInstruction() = {
+  private def getInstruction() = {
     val id = instructionId
     instructionId += 1
     f"instr#$id"
   }
 
-  def getTempVar() = {
+  private def getTempVar() = {
     val id = tempVarId
     tempVarId += 1
     f"temp#$id"
   }
 
-  def getAllocation() = {
+  private def getAllocation() = {
     val id = allocationId
     allocationId += 1
     id
   }
 
+  def generateFacts(mainPath: String): Seq[Fact] =
+    val path = mainPath.split('.').toList.map(p => SimpleName(p)).toSeq
+    Reachable(mainPath) +: trees.map(generateFacts).reduce(_ ++ _)
+
   def generateFacts(cls: ClassSymbol) = {
-    // TODO use version with reduce to collect the facts
     Traversal.walkTreeWithMethod[Seq[Fact]](cls.tree.get)((tree, context) => tree match {
       // val a = Constructor(...)
       case v@ValDef(name, tpt, Some(Apply(Select(New(TypeIdent(qualifier)), name1), args)), symbol) =>
@@ -94,7 +99,7 @@ class Andersen()(using Context) {
   }
   
   // current assumption: all (interesting?) method calls are of the form base.sig(...)
-  def breakExpr(to: Variable, e: TermTree, context: Seq[TermSymbol]): Seq[Fact] = e match {
+  private def breakExpr(to: Variable, e: TermTree, context: Seq[TermSymbol]): Seq[Fact] = e match {
     // TODO these 2 cases are slightly awkward, should be moved elsewhere
     case v: Ident => Seq(Move(to, localName(v.symbol, context)))
     case This(tpe) => Seq(Move(to, f"${context.last.fullName}.this"))
@@ -123,7 +128,7 @@ class Andersen()(using Context) {
   }
 
   // we need to use this when a fact require a name but we might need intermediate facts
-  def exprAsRef(e: TermTree, context: Seq[TermSymbol]): (Variable, Seq[Fact]) = e match {
+  private def exprAsRef(e: TermTree, context: Seq[TermSymbol]): (Variable, Seq[Fact]) = e match {
     case v: Ident => (localName(v.symbol, context), Seq.empty)
     case This(tpe) => (f"${context.last.fullName}.this", Seq.empty)
     case other =>
@@ -131,10 +136,10 @@ class Andersen()(using Context) {
       (temp, breakExpr(temp, other, context)) // this call does not require the Ident case
   }
 
-  def localName(s: Symbol, context: Seq[TermSymbol]) =
+  private def localName(s: Symbol, context: Seq[TermSymbol]) =
     f"${context.last.fullName}.${s.name}"
 
-  def typeName(t: TypeTree): String = t match {
+  private def typeName(t: TypeTree): String = t match {
     case TypeIdent(name) => name.toString
     case TypeWrapper(tpe) =>
       val ref = tpe.asInstanceOf[TypeRef]
