@@ -24,9 +24,10 @@ case class T1() extends T2
 object Main {
   case class Config(
       classPath: Option[Path] = None,
-      output: Option[Path] = Some(Path.of("./output/")),
+      output: Option[Path] = None,
       mainMethod: String = "Main.main",
-      help: Boolean = false
+      help: Boolean = false,
+      print: Boolean = false
   )
 
   val usage = "Usage: tastycarac [-h] [-m main] [-o output] classpath"
@@ -36,7 +37,25 @@ object Main {
     val config = parseArgs(argsList)
 
     if config.help then println(usage)
-    else inspect(config.classPath.get, config.output.get, config.mainMethod)
+    else {
+      val facts = inspect(config.classPath.get, config.mainMethod)
+
+      println(f"Generated ${facts.size} facts...")
+
+      if config.print then for (f <- facts)
+        println(f" - ${f.productPrefix}${f.productIterator.mkString("(", ", ", ")")}")
+
+      if config.output.isDefined then
+        Facts.exportFacts(facts, config.output.get) match {
+          case Failure(e) =>
+            println(f"Something went wrong while saving the facts: ${e}")
+          case Success(v) =>
+            println(
+              f"Facts saved successfully in ${config.output.get.toAbsolutePath().toString()}"
+            )
+        
+        }
+    }
   }
 
   def parseArgs(argsList: List[String], acc: Config = Config()): Config =
@@ -46,26 +65,19 @@ object Main {
       case ("-m" | "--main") :: value :: tail =>
         parseArgs(tail, acc.copy(mainMethod = value))
       case ("-h" | "--help") :: tail => Config(help = true)
+      case ("-p" | "--print") :: tail =>
+        parseArgs(tail, acc.copy(print = true))
       case classPath :: tail =>
         parseArgs(tail, acc.copy(classPath = Some(Path.of(classPath))))
       case Nil => acc
     }
 
-  def inspect(input: Path, output: Path, mainMethod: String) = {
+  def inspect(input: Path, mainMethod: String) = {
     // val stdLibPaths = FileSystems.getFileSystem(java.net.URI.create("jrt:/")).getPath("modules", "java.base")
     val classpath = ClasspathLoaders.read(List(input))
     given Context = Contexts.init(classpath)
     val myLibSyms = ctx.findSymbolsByClasspathEntry(classpath.entries.head)
     val trees = myLibSyms.collect { case cs: ClassSymbol => cs }
-    val facts = PointsTo(trees).generateFacts(mainMethod)
-
-    Facts.exportFacts(Facts.Reachable(mainMethod) +: facts, output) match {
-      case Failure(e) =>
-        println(f"Something went wrong while saving the facts: ${e}")
-      case Success(v) =>
-        println(
-          f"Facts saved successfully in ${output.toAbsolutePath().toString()}"
-        )
-    }
+    PointsTo(trees).generateFacts(mainMethod)
   }
 }
