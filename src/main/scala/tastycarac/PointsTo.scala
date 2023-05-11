@@ -81,10 +81,23 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
     })(_ ++ _, Seq.empty)
   }
 
-  private def breakStatement(s: StatementTree)(using context: Seq[TermSymbol]): Seq[Fact] = s match {
+  private def breakTree(s: Tree)(using context: Seq[TermSymbol]): Seq[Fact] = s match {
     case e: TermTree => breakExpr(e, None)
+    case _ => ???
   }
   
+  private def breakCase(c: CaseDef, to: Option[Variable])(using context: Seq[TermSymbol]): Seq[Fact] =
+    breakPattern(c.pattern) ++ c.guard.map(breakExpr(_, None)).getOrElse(Seq.empty) ++ breakExpr(c.body, to)
+
+  private def breakPattern(p: PatternTree)(using context: Seq[TermSymbol]): Seq[Fact] = p match {
+    case Alternative(trees) => trees.flatMap(breakPattern)
+    case Unapply(fun, implicits, patterns) => ???
+    case Bind(name, body, symbol) => ???
+    case ExprPattern(expr) => ???
+    case TypeTest(body, tpt) => ???
+    case WildcardPattern(tpe) => ???
+  }
+
   // current assumption: all (interesting?) method calls are of the form base.sig(...)
   private def breakExpr(e: TermTree, to: Option[Variable])(using context: Seq[TermSymbol]): Seq[Fact] = e match {
     // TODO these 2 cases are slightly awkward, should be moved elsewhere
@@ -125,16 +138,27 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
     // { stats; expr }
     // TODO what about scope of blocks? we cannot simply use methods
     case Block(stats, expr) =>
-      stats.flatMap(breakStatement) ++ breakExpr(expr, to)
-
-    case If(cond, thenPart, elsePart) => ???
-    case InlineIf(cond, thenPart, elsePart) => ???
-    case Match(selector, cases) => ???
+      stats.flatMap(breakTree) ++ breakExpr(expr, to)
+    case If(cond, thenPart, elsePart) =>
+      breakExpr(cond, None) ++ breakExpr(thenPart, to) ++ breakExpr(thenPart, to)
+    case InlineIf(cond, thenPart, elsePart) =>
+      breakExpr(cond, None) ++ breakExpr(thenPart, to) ++ breakExpr(thenPart, to)
+    case Match(selector, cases) =>
+      breakExpr(selector, None) ++ cases.flatMap(breakCase(_, to))
     case InlineMatch(selector, cases) => ???
+      // breakExpr(selector, None) ++ cases.flatMap(breakCase(_, to))
     case Inlined(expr, caller, bindings) => ???
     case Lambda(meth, tpt) => ???
     case NamedArg(name, arg) => ???
-    
+    case New(tpt) => ???
+    case Return(expr, from) => ???
+    case SeqLiteral(elems, elemtpt) => ???
+    case Super(qual, mix) => ???
+    case Throw(expr) => ???
+    case Try(expr, cases, finalizer) => ???
+    case TypeApply(fun, args) => ???
+    case Typed(expr, tpt) => breakExpr(expr, to)
+    case While(cond, body) => breakTree(cond) ++ breakTree(body)
     case Literal(_) => Seq.empty
     case _ => ???
   }
