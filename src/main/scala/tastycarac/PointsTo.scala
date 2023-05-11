@@ -53,25 +53,9 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
         )
 
       // val a = ...
-      case ValDef(name, tpt, Some(rhs), symbol) =>
-        breakExpr(localName(symbol, context), rhs, context)
+      case ValDef(name, tpt, Some(rhs), symbol) => ???
+        // breakExpr(rhs, Some(localName(symbol, context)))
 
-      // ... := ...
-      case Assign(lhs, rhs) =>
-        lhs match {
-          // this case is equivalent to the ValDef case
-          case v: Ident => breakExpr(localName(v.symbol, context), rhs, context)
-
-          // base.fld := ... (base can be any expression!)
-          case Select(base, fld) =>
-            val (rName, rIntermediate) = exprAsRef(rhs, context)
-            val (baseName, baseIntermediate) = exprAsRef(base, context)
-            Store(baseName, fld.toString, rName) +: rIntermediate ++: baseIntermediate
-
-          // TODO can this even happen?
-          case _ => ???
-        }
-      
       // method definition
       case DefDef(name, params, tpt, rhs, symbol) =>
         val newCon = context :+ symbol
@@ -80,12 +64,11 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
           args.zipWithIndex.map((vd, i) =>
             FormalArg(symbol.fullName.toString, f"arg$i", localName(vd.symbol, newCon)) // TODO is the context already correct?
           ) ++: rhs.map(r => {
-            val (retName, retIntermediate) = exprAsRef(r, newCon) // TODO assumption: there is a return value
+            val (retName, retIntermediate) = exprAsRef(r)(using newCon) // TODO assumption: there is a return value
             FormalReturn(symbol.fullName.toString, retName) +:
             retIntermediate
           }).getOrElse(Seq.empty)
       
-
       case ClassDef(name, rhs, symbol) => rhs.body.flatMap {
         case d@DefDef(methName, params, tpt, rhs, methSymbol) =>
           val List(Left(args)) = params // TODO assumption: one single parameters list, no type params
@@ -97,43 +80,73 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
 
     })(_ ++ _, Seq.empty)
   }
+
+  private def breakStatement(s: StatementTree)(using context: Seq[TermSymbol]): Seq[Fact] = s match {
+    case e: TermTree => breakExpr(e, None)
+  }
   
   // current assumption: all (interesting?) method calls are of the form base.sig(...)
-  private def breakExpr(to: Variable, e: TermTree, context: Seq[TermSymbol]): Seq[Fact] = e match {
+  private def breakExpr(e: TermTree, to: Option[Variable])(using context: Seq[TermSymbol]): Seq[Fact] = e match {
     // TODO these 2 cases are slightly awkward, should be moved elsewhere
-    case v: Ident => Seq(Move(to, localName(v.symbol, context)))
-    case This(tpe) => Seq(Move(to, f"${context.last.fullName}.this"))
+    case v: Ident => to.map(Move(_, localName(v.symbol, context))).toSeq
+    case This(tpe) => to.map(Move(_, f"${context.last.fullName}.this")).toSeq
 
     case Select(base, fld) =>
-      val (baseName, baseIntermediate) = exprAsRef(base, context)
-      Load(to, baseName, fld.toString) +: baseIntermediate
+      val (baseName, baseIntermediate) = exprAsRef(base)
+      baseIntermediate ++ to.map(Load(_, baseName, fld.toString))
 
     case Apply(Select(base, methName), args) =>
-      val (baseName, baseIntermediate) = exprAsRef(base, context)
+      val (baseName, baseIntermediate) = exprAsRef(base)
       val instruction = getInstruction()
       val methSigName = methName.asInstanceOf[SignedName]
       VCall(baseName, methSigName.target.toString + methSigName.sig.toString, instruction, context.last.fullName.toString) +:
-        ActualReturn(instruction, to) +:
+        to.map(ActualReturn(instruction, _)) ++:
         args.zipWithIndex.flatMap { (t, i) =>
-          val (name, argIntermediate) = exprAsRef(t, context)
+          val (name, argIntermediate) = exprAsRef(t)
           ActualArg(instruction, f"arg$i", name) +: argIntermediate
         } ++: baseIntermediate
+
+    // ... := ...
+    case Assign(lhs, rhs) =>
+      lhs match {
+        // this case is equivalent to the ValDef case
+        case v: Ident => breakExpr(rhs, Some(localName(v.symbol, context)))
+
+        // base.fld := ... (base can be any expression!)
+        case Select(base, fld) =>
+          val (rName, rIntermediate) = exprAsRef(rhs)
+          val (baseName, baseIntermediate) = exprAsRef(base)
+          Store(baseName, fld.toString, rName) +: rIntermediate ++: baseIntermediate
+
+        // TODO can this even happen?
+        case _ => ???
+      }
     
     // { stats; expr }
     // TODO what about scope of blocks? we cannot simply use methods
     case Block(stats, expr) =>
-      breakExpr(to, expr, context)
+      stats.flatMap(breakStatement) ++ breakExpr(expr, to)
 
-    case _ => Seq.empty
+    case If(cond, thenPart, elsePart) => ???
+    case InlineIf(cond, thenPart, elsePart) => ???
+    case Match(selector, cases) => ???
+    case InlineMatch(selector, cases) => ???
+    case Inlined(expr, caller, bindings) => ???
+    case Lambda(meth, tpt) => ???
+    case NamedArg(name, arg) => ???
+    
+    case Literal(_) => Seq.empty
+    case _ => ???
   }
+  
 
   // we need to use this when a fact require a name but we might need intermediate facts
-  private def exprAsRef(e: TermTree, context: Seq[TermSymbol]): (Variable, Seq[Fact]) = e match {
+  private def exprAsRef(e: TermTree)(using context: Seq[TermSymbol]): (Variable, Seq[Fact]) = e match {
     case v: Ident => (localName(v.symbol, context), Seq.empty)
     case This(tpe) => (f"${context.last.fullName}.this", Seq.empty)
     case other =>
       val temp = getTempVar()
-      (temp, breakExpr(temp, other, context)) // this call does not require the Ident case
+      (temp, breakExpr(other, Some(temp))) // this call does not require the Ident case
   }
 
   private def localName(s: Symbol, context: Seq[TermSymbol]) =
