@@ -42,3 +42,7 @@ bin/
 
 # general
 *.class
+
+# example folder
+examples/**/*.tasty
+examples/**/*.class
