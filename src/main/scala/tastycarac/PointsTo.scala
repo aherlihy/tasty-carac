@@ -42,54 +42,54 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
     val path = mainPath.split('.').toList.map(p => SimpleName(p)).toSeq
     Reachable(mainPath) +: trees.map(generateFacts).reduce(_ ++ _)
 
-  def generateFacts(cls: ClassSymbol) = {
-    Traversal.walkTreeWithMethod[Seq[Fact]](cls.tree.get)((tree, context) => tree match {
-      // val a = Constructor(...)
-      case v@ValDef(name, tpt, Some(Apply(Select(New(TypeIdent(qualifier)), name1), args)), symbol) =>
+  def generateFacts(cls: ClassSymbol): Seq[Fact] =
+    cls.tree.map(breakTree(_)(using Seq.empty)).getOrElse(Seq.empty)
+
+  private def breakTree(s: Tree)(using context: Seq[Symbol]): Seq[Fact] = s match {
+    case v@ValDef(name, tpt, Some(Apply(Select(New(TypeIdent(qualifier)), name1), args)), symbol) =>
         val allocationSite = f"new[$qualifier]#${getAllocation()}"
         Seq(
           Alloc(localName(symbol, context), allocationSite, context.last.fullName.toString),
           HeapType(allocationSite, qualifier.toString)
         )
 
-      // val a = ...
-      case ValDef(name, tpt, Some(rhs), symbol) => ???
-        // breakExpr(rhs, Some(localName(symbol, context)))
+    // val a = ...
+    case ValDef(name, tpt, Some(rhs), symbol) =>
+      breakExpr(rhs, Some(localName(symbol, context)))
 
-      // method definition
-      case DefDef(name, params, tpt, rhs, symbol) =>
-        val newCon = context :+ symbol
+    // method definition
+    case DefDef(name, params, tpt, rhs, symbol) =>
+      val newCon = context :+ symbol
+      val List(Left(args)) = params // TODO assumption: one single parameters list, no type params
+      ThisVar(symbol.fullName.toString, f"${symbol.fullName}.this") +:
+        args.zipWithIndex.map((vd, i) =>
+          FormalArg(symbol.fullName.toString, f"arg$i", localName(vd.symbol, newCon)) // TODO is the context already correct?
+        ) ++: rhs.map(r => {
+          val (retName, retIntermediate) = exprAsRef(r)(using newCon) // TODO assumption: there is a return value
+          FormalReturn(symbol.fullName.toString, retName) +:
+          retIntermediate
+        }).getOrElse(Seq.empty)
+    
+    case ClassDef(name, rhs, symbol) => rhs.body.flatMap {
+      case d@DefDef(methName, params, tpt, rhs, methSymbol) =>
         val List(Left(args)) = params // TODO assumption: one single parameters list, no type params
-        ThisVar(symbol.fullName.toString, f"${symbol.fullName}.this") +:
-          args.zipWithIndex.map((vd, i) =>
-            FormalArg(symbol.fullName.toString, f"arg$i", localName(vd.symbol, newCon)) // TODO is the context already correct?
-          ) ++: rhs.map(r => {
-            val (retName, retIntermediate) = exprAsRef(r)(using newCon) // TODO assumption: there is a return value
-            FormalReturn(symbol.fullName.toString, retName) +:
-            retIntermediate
-          }).getOrElse(Seq.empty)
-      
-      case ClassDef(name, rhs, symbol) => rhs.body.flatMap {
-        case d@DefDef(methName, params, tpt, rhs, methSymbol) =>
-          val List(Left(args)) = params // TODO assumption: one single parameters list, no type params
-          Seq(LookUp(name.toString, methName.toString + args.map(d => typeName(d.tpt)).mkString("(", ",", ")") + ":" + typeName(tpt), methSymbol.fullName.toString))
-        case _ => Seq.empty
-      }
-      
-      case _ => Seq.empty
+        LookUp(name.toString, methName.toString + args.map(d => typeName(d.tpt)).mkString("(", ",", ")") + ":" + typeName(tpt), methSymbol.fullName.toString) +:
+        breakTree(d)
+      case other => breakTree(other)
+    }
+    
+    // expression in statement position
+    case e: TermTree =>
+      breakExpr(e, None)
 
-    })(_ ++ _, Seq.empty)
-  }
-
-  private def breakTree(s: Tree)(using context: Seq[TermSymbol]): Seq[Fact] = s match {
-    case e: TermTree => breakExpr(e, None)
-    case _ => ???
+    case other =>
+      Traversal.subtrees(other).flatMap(breakTree)
   }
   
-  private def breakCase(c: CaseDef, to: Option[Variable])(using context: Seq[TermSymbol]): Seq[Fact] =
+  private def breakCase(c: CaseDef, to: Option[Variable])(using context: Seq[Symbol]): Seq[Fact] =
     breakPattern(c.pattern) ++ c.guard.map(breakExpr(_, None)).getOrElse(Seq.empty) ++ breakExpr(c.body, to)
 
-  private def breakPattern(p: PatternTree)(using context: Seq[TermSymbol]): Seq[Fact] = p match {
+  private def breakPattern(p: PatternTree)(using context: Seq[Symbol]): Seq[Fact] = p match {
     case Alternative(trees) => trees.flatMap(breakPattern)
     case Unapply(fun, implicits, patterns) => ???
     case Bind(name, body, symbol) => ???
@@ -99,7 +99,7 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
   }
 
   // current assumption: all (interesting?) method calls are of the form base.sig(...)
-  private def breakExpr(e: TermTree, to: Option[Variable])(using context: Seq[TermSymbol]): Seq[Fact] = e match {
+  private def breakExpr(e: TermTree, to: Option[Variable])(using context: Seq[Symbol]): Seq[Fact] = e match {
     // TODO these 2 cases are slightly awkward, should be moved elsewhere
     case v: Ident => to.map(Move(_, localName(v.symbol, context))).toSeq
     case This(tpe) => to.map(Move(_, f"${context.last.fullName}.this")).toSeq
@@ -150,7 +150,7 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
     case Inlined(expr, caller, bindings) => ???
     case Lambda(meth, tpt) => ???
     case NamedArg(name, arg) => ???
-    case New(tpt) => ???
+    case New(tpt) => Seq.empty // TODO
     case Return(expr, from) => ???
     case SeqLiteral(elems, elemtpt) => ???
     case Super(qual, mix) => ???
@@ -165,7 +165,7 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
   
 
   // we need to use this when a fact require a name but we might need intermediate facts
-  private def exprAsRef(e: TermTree)(using context: Seq[TermSymbol]): (Variable, Seq[Fact]) = e match {
+  private def exprAsRef(e: TermTree)(using context: Seq[Symbol]): (Variable, Seq[Fact]) = e match {
     case v: Ident => (localName(v.symbol, context), Seq.empty)
     case This(tpe) => (f"${context.last.fullName}.this", Seq.empty)
     case other =>
@@ -173,7 +173,7 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
       (temp, breakExpr(other, Some(temp))) // this call does not require the Ident case
   }
 
-  private def localName(s: Symbol, context: Seq[TermSymbol]) =
+  private def localName(s: Symbol, context: Seq[Symbol]) =
     f"${context.last.fullName}.${s.name}"
 
   private def typeName(t: TypeTree): String = t match {
