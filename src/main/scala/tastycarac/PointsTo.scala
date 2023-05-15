@@ -57,24 +57,17 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
     case ValDef(name, tpt, Some(rhs), symbol) =>
       breakExpr(rhs, Some(localName(symbol, context)))
 
-    // method definition
-    case DefDef(name, params, tpt, rhs, symbol) =>
-      val newCon = context :+ symbol
-      val List(Left(args)) = params // TODO assumption: one single parameters list, no type params
-      ThisVar(symbol.fullName.toString, f"${symbol.fullName}.this") +:
-        args.zipWithIndex.map((vd, i) =>
-          FormalArg(symbol.fullName.toString, f"arg$i", localName(vd.symbol, newCon)) // TODO is the context already correct?
-        ) ++: rhs.map(r => {
-          val (retName, retIntermediate) = exprAsRef(r)(using newCon) // TODO assumption: there is a return value
-          FormalReturn(symbol.fullName.toString, retName) +:
-          retIntermediate
-        }).getOrElse(Seq.empty)
+    // (static) method definition
+    case d@DefDef(name, params, tpt, rhs, symbol) =>
+      StaticLookUp(symbol.fullName.toString()) +:
+      breakDefDef(d)
     
     case ClassDef(name, rhs, symbol) => rhs.body.flatMap {
       case d@DefDef(methName, params, tpt, rhs, methSymbol) =>
         val List(Left(args)) = params // TODO assumption: one single parameters list, no type params
         LookUp(name.toString, methName.toString + args.map(d => typeName(d.tpt)).mkString("(", ",", ")") + ":" + typeName(tpt), methSymbol.fullName.toString) +:
-        breakTree(d)
+        ThisVar(d.symbol.fullName.toString, f"${d.symbol.fullName}.this") +:
+        breakDefDef(d)
       case other => breakTree(other)
     }
     
@@ -98,6 +91,17 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
     case WildcardPattern(tpe) => ???
   }
 
+  private def breakDefDef(d: DefDef)(using context: Seq[Symbol]): Seq[Fact] =
+    val newCon = context :+ d.symbol
+    val List(Left(args)) = d.paramLists // TODO assumption: one single parameters list, no type params
+    args.zipWithIndex.map((vd, i) =>
+      FormalArg(d.symbol.fullName.toString, f"arg$i", localName(vd.symbol, newCon)) // TODO is the context already correct?
+    ) ++: d.rhs.map(r => {
+      val (retName, retIntermediate) = exprAsRef(r)(using newCon) // TODO assumption: there is a return value
+      FormalReturn(d.symbol.fullName.toString, retName) +:
+      retIntermediate
+    }).getOrElse(Seq.empty)
+
   // current assumption: all (interesting?) method calls are of the form base.sig(...)
   private def breakExpr(e: TermTree, to: Option[Variable])(using context: Seq[Symbol]): Seq[Fact] = e match {
     // TODO these 2 cases are slightly awkward, should be moved elsewhere
@@ -118,6 +122,19 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
           val (name, argIntermediate) = exprAsRef(t)
           ActualArg(instruction, f"arg$i", name) +: argIntermediate
         } ++: baseIntermediate
+    
+    // static method call
+    case Apply(fun: Ident, args) =>
+      val instruction = getInstruction()
+      StaticCall(fun.symbol.fullName.toString(), instruction, context.last.fullName.toString()) +:
+        to.map(ActualReturn(instruction, _)) ++:
+        args.zipWithIndex.flatMap { (t, i) =>
+          val (name, argIntermediate) = exprAsRef(t)
+          ActualArg(instruction, f"arg$i", name) +: argIntermediate
+        }
+    
+    // TODO can this case happen? If we have a lambda it would be l.apply(...)
+    case Apply(fun, args) => ???
 
     // ... := ...
     case Assign(lhs, rhs) =>

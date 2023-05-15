@@ -80,6 +80,10 @@ object Facts {
   // meth is reachable (we should always have Reachable(@main))
   case class Reachable(meth: Method) extends Fact
 
+  case class StaticCall(meth: Method, invo: Instruction, inMeth: Method) extends Fact
+
+  case class StaticLookUp(meth: Method) extends Fact
+
   def exportFacts(facts: Seq[Fact], output: Path): Try[Unit] =
     facts
       .groupBy(_.productPrefix)
