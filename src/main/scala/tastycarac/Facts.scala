@@ -1,6 +1,7 @@
 package tastycarac
 
 import tastyquery.Symbols.TermSymbol
+import tastycarac.Symbols.SymbolId
 
 import java.nio.file.{Paths, Files}
 import java.nio.charset.StandardCharsets
@@ -13,9 +14,9 @@ import scala.util.Success
 import scala.util.Failure
 
 object Facts {
-  type Variable = String
+  type Variable = SymbolId
   type Heap = String // allocation site
-  type Method = String
+  type Method = SymbolId
   type Signature = String
   type Field = String
   type Instruction = String
@@ -25,13 +26,13 @@ object Facts {
   abstract class Fact extends Product
 
   // val v = new ... (heap is the allocation site, inMeth is the method)
-  case class Alloc(varr: String, heap: String, inMeth: String) extends Fact
+  case class Alloc(varr: Variable, heap: String, inMeth: Method) extends Fact
 
   // val to = from (from is a variable)
-  case class Move(to: String, from: String) extends Fact
+  case class Move(to: Variable, from: Variable) extends Fact
 
   // to := base.fld
-  case class Load(to: String, base: String, fld: Field) extends Fact
+  case class Load(to: Variable, base: Variable, fld: Field) extends Fact
 
   // base.fld = from
   case class Store(base: Variable, fld: Field, from: Variable) extends Fact

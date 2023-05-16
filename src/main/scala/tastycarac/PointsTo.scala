@@ -14,11 +14,20 @@ import tastyquery.Types.PackageRef
 import tastyquery.Contexts.ctx
 import tastyquery.Names.Name
 import tastyquery.Names.SimpleName
+import tastycarac.Symbols.Table
+import scala.collection.mutable
+import tastycarac.Symbols.fullPath
+import tastycarac.Symbols.*
+import tastyquery.Symbols
+import tastyquery.Types.Type
 
 class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
   var instructionId = 0
   var tempVarId = 0
   var allocationId = 0
+  val table = Table()
+
+  type ContextInfo = (Seq[Symbol], Option[ThisSymbolId])
 
   private def getInstruction() = {
     val id = instructionId
@@ -39,35 +48,39 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
   }
 
   def generateFacts(mainPath: String): Seq[Fact] =
-    val path = mainPath.split('.').toList.map(p => SimpleName(p)).toSeq
-    Reachable(mainPath) +: trees.map(generateFacts).reduce(_ ++ _)
+    // TODO HANDLE ENTRY POINT
+    val path = mainPath.split('.').toList
+    val classSymbol = ctx.findTopLevelModuleClass(path.init.mkString("."))
+    val mainMethod = classSymbol.declarations.find(_.name.toString == path.last).get
+    Reachable(table.getSymbolId(mainMethod)) +: trees.map(generateFacts).reduce(_ ++ _)
 
   def generateFacts(cls: ClassSymbol): Seq[Fact] =
-    cls.tree.map(breakTree(_)(using Seq.empty)).getOrElse(Seq.empty)
+    cls.tree.map(breakTree(_)(using (Seq.empty, None))).getOrElse(Seq.empty)
 
-  private def breakTree(s: Tree)(using context: Seq[Symbol]): Seq[Fact] = s match {
-    case v@ValDef(name, tpt, Some(Apply(Select(New(TypeIdent(qualifier)), name1), args)), symbol) =>
-        val allocationSite = f"new[$qualifier]#${getAllocation()}"
+  private def breakTree(s: Tree)(using context: ContextInfo): Seq[Fact] = s match {
+    case v@ValDef(name, tpt, Some(Apply(Select(New(newTpt), name1), args)), symbol) =>
+        val allocationSite = f"new[${typeName(newTpt)}]#${getAllocation()}"
         Seq(
-          Alloc(localName(symbol, context), allocationSite, context.last.fullName.toString),
-          HeapType(allocationSite, qualifier.toString)
+          Alloc(table.getSymbolId(symbol), allocationSite, table.getSymbolId(context._1.last)),
+          HeapType(allocationSite, typeName(newTpt))
         )
 
     // val a = ...
     case ValDef(name, tpt, Some(rhs), symbol) =>
-      breakExpr(rhs, Some(localName(symbol, context)))
+      breakExpr(rhs, Some(table.getSymbolId(symbol)))
 
     // (static) method definition
     case d@DefDef(name, params, tpt, rhs, symbol) =>
-      StaticLookUp(symbol.fullName.toString()) +:
-      breakDefDef(d)
+      StaticLookUp(table.getSymbolId(symbol)) +:
+      breakDefDef(d)(using (context._1 :+ symbol, context._2))
     
-    case ClassDef(name, rhs, symbol) => rhs.body.flatMap {
+    case cs@ClassDef(name, rhs, symbol) => rhs.body.flatMap {
       case d@DefDef(methName, params, tpt, rhs, methSymbol) =>
         val List(Left(args)) = params // TODO assumption: one single parameters list, no type params
-        LookUp(name.toString, methName.toString + args.map(d => typeName(d.tpt)).mkString("(", ",", ")") + ":" + typeName(tpt), methSymbol.fullName.toString) +:
-        ThisVar(d.symbol.fullName.toString, f"${d.symbol.fullName}.this") +:
-        breakDefDef(d)
+        val thisId = ThisSymbolId(table.getSymbolId(methSymbol))
+        LookUp(table.getSymbolId(symbol).toString, methName.toString + args.map(d => typeName(d.tpt)).mkString("(", ",", ")") + ":" + typeName(tpt), table.getSymbolId(methSymbol)) +:
+        ThisVar(table.getSymbolId(methSymbol), thisId) +:
+        breakDefDef(d)(using (context._1 :+ methSymbol, Some(thisId)))
       case other => breakTree(other)
     }
     
@@ -79,10 +92,10 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
       Traversal.subtrees(other).flatMap(breakTree)
   }
   
-  private def breakCase(c: CaseDef, to: Option[Variable])(using context: Seq[Symbol]): Seq[Fact] =
+  private def breakCase(c: CaseDef, to: Option[Variable])(using context: ContextInfo): Seq[Fact] =
     breakPattern(c.pattern) ++ c.guard.map(breakExpr(_, None)).getOrElse(Seq.empty) ++ breakExpr(c.body, to)
 
-  private def breakPattern(p: PatternTree)(using context: Seq[Symbol]): Seq[Fact] = p match {
+  private def breakPattern(p: PatternTree)(using context: ContextInfo): Seq[Fact] = p match {
     case Alternative(trees) => trees.flatMap(breakPattern)
     case Unapply(fun, implicits, patterns) => ???
     case Bind(name, body, symbol) => ???
@@ -91,22 +104,21 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
     case WildcardPattern(tpe) => ???
   }
 
-  private def breakDefDef(d: DefDef)(using context: Seq[Symbol]): Seq[Fact] =
-    val newCon = context :+ d.symbol
+  private def breakDefDef(d: DefDef)(using context: ContextInfo): Seq[Fact] =
     val List(Left(args)) = d.paramLists // TODO assumption: one single parameters list, no type params
     args.zipWithIndex.map((vd, i) =>
-      FormalArg(d.symbol.fullName.toString, f"arg$i", localName(vd.symbol, newCon)) // TODO is the context already correct?
+      FormalArg(table.getSymbolId(d.symbol), f"arg$i", table.getSymbolId(vd.symbol)) // TODO is the context already correct?
     ) ++: d.rhs.map(r => {
-      val (retName, retIntermediate) = exprAsRef(r)(using newCon) // TODO assumption: there is a return value
-      FormalReturn(d.symbol.fullName.toString, retName) +:
+      val (retName, retIntermediate) = exprAsRef(r) // TODO assumption: there is a return value
+      FormalReturn(table.getSymbolId(d.symbol), retName) +:
       retIntermediate
     }).getOrElse(Seq.empty)
 
   // current assumption: all (interesting?) method calls are of the form base.sig(...)
-  private def breakExpr(e: TermTree, to: Option[Variable])(using context: Seq[Symbol]): Seq[Fact] = e match {
+  private def breakExpr(e: TermTree, to: Option[Variable])(using context: ContextInfo): Seq[Fact] = e match {
     // TODO these 2 cases are slightly awkward, should be moved elsewhere
-    case v: Ident => to.map(Move(_, localName(v.symbol, context))).toSeq
-    case This(tpe) => to.map(Move(_, f"${context.last.fullName}.this")).toSeq
+    case v: Ident => to.map(Move(_, table.getSymbolId(v.symbol))).toSeq
+    case This(tpe) => to.map(Move(_, context._2.get)).toSeq
 
     case Select(base, fld) =>
       val (baseName, baseIntermediate) = exprAsRef(base)
@@ -116,7 +128,7 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
       val (baseName, baseIntermediate) = exprAsRef(base)
       val instruction = getInstruction()
       val methSigName = methName.asInstanceOf[SignedName]
-      VCall(baseName, methSigName.target.toString + methSigName.sig.toString, instruction, context.last.fullName.toString) +:
+      VCall(baseName, methSigName.target.toString + methSigName.sig.toString, instruction, table.getSymbolId(context._1.last)) +:
         to.map(ActualReturn(instruction, _)) ++:
         args.zipWithIndex.flatMap { (t, i) =>
           val (name, argIntermediate) = exprAsRef(t)
@@ -126,7 +138,7 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
     // static method call
     case Apply(fun: Ident, args) =>
       val instruction = getInstruction()
-      StaticCall(fun.symbol.fullName.toString(), instruction, context.last.fullName.toString()) +:
+      StaticCall(table.getSymbolId(fun.symbol), instruction, table.getSymbolId(context._1.last)) +:
         to.map(ActualReturn(instruction, _)) ++:
         args.zipWithIndex.flatMap { (t, i) =>
           val (name, argIntermediate) = exprAsRef(t)
@@ -140,7 +152,7 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
     case Assign(lhs, rhs) =>
       lhs match {
         // this case is equivalent to the ValDef case
-        case v: Ident => breakExpr(rhs, Some(localName(v.symbol, context)))
+        case v: Ident => breakExpr(rhs, Some(table.getSymbolId(v.symbol)))
 
         // base.fld := ... (base can be any expression!)
         case Select(base, fld) =>
@@ -182,22 +194,22 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
   
 
   // we need to use this when a fact require a name but we might need intermediate facts
-  private def exprAsRef(e: TermTree)(using context: Seq[Symbol]): (Variable, Seq[Fact]) = e match {
-    case v: Ident => (localName(v.symbol, context), Seq.empty)
-    case This(tpe) => (f"${context.last.fullName}.this", Seq.empty)
+  private def exprAsRef(e: TermTree)(using context: ContextInfo): (Variable, Seq[Fact]) = e match {
+    case v: Ident => (table.getSymbolId(v.symbol), Seq.empty)
+    case This(tpe) => (context._2.get, Seq.empty)
     case other =>
-      val temp = getTempVar()
+      val temp = table.getSymbolIdFromPath(fullPath(context._1.last) :+ SimpleName("temp"))
       (temp, breakExpr(other, Some(temp))) // this call does not require the Ident case
   }
 
   private def localName(s: Symbol, context: Seq[Symbol]) =
     f"${context.last.fullName}.${s.name}"
 
-  private def typeName(t: TypeTree): String = t match {
-    case TypeIdent(name) => name.toString
-    case TypeWrapper(tpe) =>
-      val ref = tpe.asInstanceOf[TypeRef]
-      val prefix = ref.prefix.asInstanceOf[PackageRef]
-      f"${prefix.fullyQualifiedName}.${ref.name}"
-  }
+  private def typeName(t: TypeTree): String =
+    typeName(t.toType)
+
+  private def typeName(tpe: Type) =
+    val ref = tpe.asInstanceOf[TypeRef]
+    val prefix = ref.prefix.asInstanceOf[PackageRef]
+    f"${prefix.fullyQualifiedName}.${ref.name}"
 }
