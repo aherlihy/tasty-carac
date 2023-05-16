@@ -18,7 +18,7 @@ We need to use the `-m` option to indicate the entry point to the program
 (typically the main method).
 
 ```bash
-run -p -m Main.main -o <output-path> examples/pointstofun
+run -p -m pointstofun.Main.main -o <output-path> examples/pointstofun
 ```
 
 The program creates a CSV file for each type of facts under `<output-path>`.
