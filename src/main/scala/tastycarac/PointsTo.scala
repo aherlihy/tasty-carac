@@ -58,13 +58,6 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
     cls.tree.map(breakTree(_)(using (Seq.empty, None))).getOrElse(Seq.empty)
 
   private def breakTree(s: Tree)(using context: ContextInfo): Seq[Fact] = s match {
-    case v@ValDef(name, tpt, Some(Apply(Select(New(newTpt), name1), args)), symbol) =>
-        val allocationSite = f"new[${typeName(newTpt)}]#${getAllocation()}"
-        Seq(
-          Alloc(table.getSymbolId(symbol), allocationSite, table.getSymbolId(context._1.last)),
-          HeapType(allocationSite, typeName(newTpt))
-        )
-
     // val a = ...
     case ValDef(name, tpt, Some(rhs), symbol) =>
       breakExpr(rhs, Some(table.getSymbolId(symbol)))
@@ -124,6 +117,13 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
       val (baseName, baseIntermediate) = exprAsRef(base)
       baseIntermediate ++ to.map(Load(_, baseName, fld.toString))
 
+    // constructor call
+    case Apply(Select(New(newTpt), name1), args) =>
+      val allocationSite = f"new[${typeName(newTpt)}]#${getAllocation()}"
+      HeapType(allocationSite, typeName(newTpt)) +:
+        to.map(Alloc(_, allocationSite, table.getSymbolId(context._1.last))).toSeq
+    
+    // base.sig(...)
     case Apply(Select(base, methName), args) =>
       val (baseName, baseIntermediate) = exprAsRef(base)
       val instruction = getInstruction()
