@@ -1,3 +1,5 @@
+package pointstofun
+
 abstract class A
 
 class A1() extends A
