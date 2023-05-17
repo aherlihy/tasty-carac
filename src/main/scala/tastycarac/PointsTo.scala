@@ -67,15 +67,31 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
       StaticLookUp(table.getSymbolId(symbol)) +:
       breakDefDef(d)(using (context._1 :+ symbol, context._2))
     
-    case cs@ClassDef(name, rhs, symbol) => rhs.body.flatMap {
-      case d@DefDef(methName, params, tpt, rhs, methSymbol) =>
-        val List(Left(args)) = params // TODO assumption: one single parameters list, no type params
-        val thisId = ThisSymbolId(table.getSymbolId(methSymbol))
-        LookUp(table.getSymbolId(symbol).toString, methName.toString + args.map(d => typeName(d.tpt)).mkString("(", ",", ")") + ":" + typeName(tpt), table.getSymbolId(methSymbol)) +:
-        ThisVar(table.getSymbolId(methSymbol), thisId) +:
-        breakDefDef(d)(using (context._1 :+ methSymbol, Some(thisId)))
-      case other => breakTree(other)
-    }
+    case cs@ClassDef(name, rhs, symbol) =>
+      val initSymbol = table.getSymbolId(rhs.constr.symbol)
+      val initThis = ThisSymbolId(initSymbol)
+      val initContext = (context._1 :+ rhs.constr.symbol, Some(initThis))
+
+      def forInstanceMethod(d: DefDef) =
+        val List(Left(args)) = d.paramLists // TODO assumption: one single parameters list, no type params
+        val thisId = ThisSymbolId(table.getSymbolId(d.symbol))
+        LookUp(table.getSymbolId(symbol).toString, signatureFromDef(d), table.getSymbolId(d.symbol)) +:
+        ThisVar(table.getSymbolId(d.symbol), thisId) +:
+        breakDefDef(d)(using (context._1 :+ d.symbol, Some(thisId)))
+
+      forInstanceMethod(rhs.constr) ++:
+      rhs.body.flatMap {
+        case d:DefDef =>
+          forInstanceMethod(d)
+
+        // field declaration with a concrete value
+        case ValDef(name, tpt, Some(rhs), symbol) =>
+          val (rName, rIntermediate) = exprAsRef(rhs)(using initContext)
+          Store(initThis, name.toString, rName) +: rIntermediate
+        
+        // other statements are handled as if they were inside the constructor
+        case other => breakTree(other)(using initContext)
+      }
     
     // expression in statement position
     case e: TermTree =>
@@ -97,6 +113,7 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
     case WildcardPattern(tpe) => ???
   }
 
+  // method arguments, body and return
   private def breakDefDef(d: DefDef)(using context: ContextInfo): Seq[Fact] =
     val List(Left(args)) = d.paramLists // TODO assumption: one single parameters list, no type params
     args.zipWithIndex.map((vd, i) =>
@@ -179,7 +196,7 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
     case Inlined(expr, caller, bindings) => ???
     case Lambda(meth, tpt) => ???
     case NamedArg(name, arg) => ???
-    case New(tpt) => Seq.empty // TODO
+    case New(tpt) => Seq.empty // TODO this is where we need to handle the allocation site
     case Return(expr, from) => ???
     case SeqLiteral(elems, elemtpt) => ???
     case Super(qual, mix) => ???
@@ -212,4 +229,8 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
     val ref = tpe.asInstanceOf[TypeRef]
     val prefix = ref.prefix.asInstanceOf[PackageRef]
     f"${prefix.fullyQualifiedName}.${ref.name}"
+
+  private def signatureFromDef(d: DefDef): String =
+    val List(Left(args)) = d.paramLists // TODO assumption: one single parameters list, no type params
+    d.name.toString + args.map(a => typeName(a.tpt)).mkString("(", ",", ")") + ":" + typeName(d.resultTpt)
 }
