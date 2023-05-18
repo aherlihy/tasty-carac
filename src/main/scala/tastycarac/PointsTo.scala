@@ -20,6 +20,8 @@ import tastycarac.Symbols.fullPath
 import tastycarac.Symbols.*
 import tastyquery.Symbols
 import tastyquery.Types.Type
+import tastyquery.Names.TermName
+import tastyquery.Signatures.ParamSig
 
 class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
   var instructionId = 0
@@ -79,6 +81,8 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
         ThisVar(table.getSymbolId(d.symbol), thisId) +:
         breakDefDef(d)(using (context._1 :+ d.symbol, Some(thisId)))
 
+      // we make the init method return the instance so that it can be handled as a normal method call
+      FormalReturn(initSymbol, initThis) +:
       forInstanceMethod(rhs.constr) ++:
       rhs.body.flatMap {
         case d:DefDef =>
@@ -134,18 +138,11 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
       val (baseName, baseIntermediate) = exprAsRef(base)
       baseIntermediate ++ to.map(Load(_, baseName, fld.toString))
 
-    // constructor call
-    case Apply(Select(New(newTpt), name1), args) =>
-      val allocationSite = f"new[${typeName(newTpt)}]#${getAllocation()}"
-      HeapType(allocationSite, typeName(newTpt)) +:
-        to.map(Alloc(_, allocationSite, table.getSymbolId(context._1.last))).toSeq
-    
     // base.sig(...)
     case Apply(Select(base, methName), args) =>
       val (baseName, baseIntermediate) = exprAsRef(base)
       val instruction = getInstruction()
-      val methSigName = methName.asInstanceOf[SignedName]
-      VCall(baseName, methSigName.target.toString + methSigName.sig.toString, instruction, table.getSymbolId(context._1.last)) +:
+      VCall(baseName, signatureFromCall(methName), instruction, table.getSymbolId(context._1.last)) +:
         to.map(ActualReturn(instruction, _)) ++:
         args.zipWithIndex.flatMap { (t, i) =>
           val (name, argIntermediate) = exprAsRef(t)
@@ -181,6 +178,12 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
         case _ => ???
       }
     
+    // allocation site
+    case New(tpt) =>
+      val allocationSite = f"new[${typeName(tpt)}]#${getAllocation()}"
+      HeapType(allocationSite, typeName(tpt)) +:
+        to.map(Alloc(_, allocationSite, table.getSymbolId(context._1.last))).toSeq
+    
     // { stats; expr }
     // TODO what about scope of blocks? we cannot simply use methods
     case Block(stats, expr) =>
@@ -196,7 +199,6 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
     case Inlined(expr, caller, bindings) => ???
     case Lambda(meth, tpt) => ???
     case NamedArg(name, arg) => ???
-    case New(tpt) => Seq.empty // TODO this is where we need to handle the allocation site
     case Return(expr, from) => ???
     case SeqLiteral(elems, elemtpt) => ???
     case Super(qual, mix) => ???
@@ -232,5 +234,12 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
 
   private def signatureFromDef(d: DefDef): String =
     val List(Left(args)) = d.paramLists // TODO assumption: one single parameters list, no type params
-    d.name.toString + args.map(a => typeName(a.tpt)).mkString("(", ",", ")") + ":" + typeName(d.resultTpt)
+    d.name.toString + args.map(a => typeName(a.tpt)).mkString("(", ",", ")") // + ":" + typeName(d.resultTpt)
+
+  private def signatureFromCall(name: TermName): String =
+    val methSigName = name.asInstanceOf[SignedName]
+    methSigName.target.toString + methSigName.sig.paramsSig.map {
+      case ParamSig.Term(typ) => typ.toString
+      case ParamSig.TypeLen(len) => ??? // TODO what is this?
+    }.mkString("(", ",", ")")
 }
