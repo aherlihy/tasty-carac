@@ -81,8 +81,6 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
         ThisVar(table.getSymbolId(d.symbol), thisId) +:
         breakDefDef(d)(using (context._1 :+ d.symbol, Some(thisId)))
 
-      // we make the init method return the instance so that it can be handled as a normal method call
-      FormalReturn(initSymbol, initThis) +:
       forInstanceMethod(rhs.constr) ++:
       rhs.body.flatMap {
         case d:DefDef =>
@@ -143,7 +141,11 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
       val (baseName, baseIntermediate) = exprAsRef(base)
       val instruction = getInstruction()
       VCall(baseName, signatureFromCall(methName), instruction, table.getSymbolId(context._1.last)) +:
-        to.map(ActualReturn(instruction, _)) ++:
+        to.map(t => base match {
+          // in the case of allocation 
+          case New(tpt) => Move(t, baseName)
+          case _ => ActualReturn(instruction, t)
+        }) ++:
         args.zipWithIndex.flatMap { (t, i) =>
           val (name, argIntermediate) = exprAsRef(t)
           ActualArg(instruction, f"arg$i", name) +: argIntermediate
