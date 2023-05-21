@@ -13,8 +13,6 @@ class PointsToNested
   test("all methods are reachable") {
     val reachable = program.namedRelation("Reachable").get().map(_.head)
 
-    println(reachable)
-
     assert(
       Set(
         "pointstonested.Main.main",
