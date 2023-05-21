@@ -75,12 +75,14 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
       val initContext = (context._1 :+ rhs.constr.symbol, Some(initThis))
 
       def forInstanceMethod(d: DefDef) =
-        val List(Left(args)) = d.paramLists // TODO assumption: one single parameters list, no type params
         val thisId = ThisSymbolId(table.getSymbolId(d.symbol))
         LookUp(table.getSymbolId(symbol).toString, signatureFromDef(d), table.getSymbolId(d.symbol)) +:
         ThisVar(table.getSymbolId(d.symbol), thisId) +:
         breakDefDef(d)(using (context._1 :+ d.symbol, Some(thisId)))
 
+      // values of arguments are assigned to instance fields
+      val List(Left(args)) = rhs.constr.paramLists // TODO assumption: one single parameters list, no type params
+      args.map(a => Store(initThis, a.name.toString, table.getSymbolId(a.symbol))) ++:
       forInstanceMethod(rhs.constr) ++:
       rhs.body.flatMap {
         case d:DefDef =>
