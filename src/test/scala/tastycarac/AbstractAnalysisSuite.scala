@@ -13,13 +13,14 @@ import coursier.core.Module
 import tastyquery.jdk.ClasspathLoaders
 import tastyquery.Contexts
 import tastyquery.Contexts.Context
-import tastyquery.Contexts.ctx
 import tastyquery.Symbols.ClassSymbol
 import java.io.File
 import datalog.execution.SemiNaiveExecutionEngine
 import datalog.storage.DefaultStorageManager
 import datalog.dsl.Program
 import tastycarac.rulesets.RuleSet
+import java.nio.file.FileSystems
+import tastyquery.Symbols.TermOrTypeSymbol
 
 
 abstract class AbstractAnalysisSuite(file: String, mainMethod: String, ruleset: RuleSet) extends munit.FunSuite  {
@@ -33,20 +34,21 @@ abstract class AbstractAnalysisSuite(file: String, mainMethod: String, ruleset: 
 
     val module = Dependency(Module(Organization("org.scala-lang"), ModuleName("scala3-library_3"), Map.empty), "3.2.2")
 
-    val lib = Fetch()
+    val scalaStdLib = Fetch()
     .addDependencies(module)
-    .run().map(_.toPath()).toSeq
+    .run().map(_.toPath()).toList
 
     dotc.Main.process(Array(
       "-d", dir.toString,
-      "-classpath", lib.mkString(File.pathSeparator),
+      "-classpath", scalaStdLib.mkString(File.pathSeparator),
       inputPath.toString, 
     ))      
-
-    val classpath = ClasspathLoaders.read(List(dir))
-    given Context = Contexts.init(classpath)
+    
+    val javaStdLib = FileSystems.getFileSystem(java.net.URI.create("jrt:/")).getPath("modules", "java.base")
+    val classpath = ClasspathLoaders.read(dir :: javaStdLib :: scalaStdLib)
+    val ctx = Contexts.init(classpath)
     val trees = ctx.findSymbolsByClasspathEntry(classpath.entries.head).collect { case cs: ClassSymbol => cs }
-    facts = PointsTo(trees).generateFacts(mainMethod)
+    facts = PointsTo(trees)(using ctx).generateFacts(mainMethod)
 
     val engine = SemiNaiveExecutionEngine(DefaultStorageManager())
     program = Program(engine)
