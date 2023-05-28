@@ -27,8 +27,14 @@ object PointsToRuleSet extends RuleSet {
     val InterProcAssign = program.relation[String]()
     val Reachable = program.relation[String]("Reachable")
 
+    val Delegate = program.relation[String]("Delegate")
+    val Defines = program.relation[String]("Defines")
+    val NotDefines = program.relation[String]("NotDefines")
+    val Extends = program.relation[String]("Extends")
+
     val varr, heap, meth, to, from, base, baseH, fld, ref = program.variable()
     val toMeth, thiss, invo, sig, inMeth, heapT, n = program.variable()
+    val classA, classB, classC = program.variable()
 
     VarPointsTo(varr, heap) :- (Reachable(meth), Alloc(varr, heap, meth))
     VarPointsTo(to, heap) :- (Move(to, from), VarPointsTo(from, heap))
@@ -62,6 +68,13 @@ object PointsToRuleSet extends RuleSet {
     Reachable(toMeth) :- (StaticCall(toMeth, invo, inMeth), Reachable(inMeth), StaticLookUp(toMeth))
 
     CallGraph(invo, toMeth) :- (StaticCall(toMeth, invo, inMeth), Reachable(inMeth), StaticLookUp(toMeth))
+
+    Delegate(classC, sig, classC) :- Defines(classC, sig, meth)
+
+    Delegate(classC, sig, classA) :-
+        (Delegate(classC, sig, classB), NotDefines(classB, sig), Extends(classB, classA))
+
+    LookUp(classC, sig, meth) :- (Delegate(classC, sig, classA), Defines(classA, sig, meth))
 
     VarPointsTo
   }
