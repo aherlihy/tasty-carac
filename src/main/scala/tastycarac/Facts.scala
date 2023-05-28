@@ -17,7 +17,7 @@ object Facts {
   type Variable = SymbolId
   type Heap = String // allocation site
   type Method = SymbolId
-  type Signature = String
+  type Signature = SymbolId
   type Field = String
   type Instruction = String
   type Type = String
@@ -84,6 +84,10 @@ object Facts {
   case class StaticCall(meth: Method, invo: Instruction, inMeth: Method) extends Fact
 
   case class StaticLookUp(meth: Method) extends Fact
+
+  case class Defines(typee: Type, sig: Variable, meth: Variable) extends Fact
+  case class NotDefines(typee: Type, sig: Variable) extends Fact
+  case class Extends(typeA: Type, typeB: Type) extends Fact
 
   def exportFacts(facts: Seq[Fact], output: Path): Try[Unit] =
     facts

@@ -28,6 +28,7 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
   var tempVarId = 0
   var allocationId = 0
   val table = Table()
+  val classStructure = ClassStructure(table)
 
   type ContextInfo = (Seq[Symbol], Option[ThisSymbolId])
 
@@ -76,7 +77,8 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
 
       def forInstanceMethod(d: DefDef) =
         val thisId = ThisSymbolId(table.getSymbolId(d.symbol))
-        LookUp(table.getSymbolId(symbol).toString, signatureFromDef(d), table.getSymbolId(d.symbol)) +:
+        val overridenSymbols = classStructure.findRootSymbols(d.symbol)
+        overridenSymbols.map(s => LookUp(table.getSymbolId(symbol).toString, table.getSymbolId(s), table.getSymbolId(d.symbol))) ++:
         ThisVar(table.getSymbolId(d.symbol), thisId) +:
         breakDefDef(d)(using (context._1 :+ d.symbol, Some(thisId)))
 
@@ -139,10 +141,11 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
       baseIntermediate ++ to.map(Load(_, baseName, fld.toString))
 
     // base.sig(...)
-    case Apply(Select(base, methName), args) =>
+    case Apply(sel@Select(base, methName), args) =>
       val (baseName, baseIntermediate) = exprAsRef(base)
       val instruction = getInstruction()
-      VCall(baseName, signatureFromCall(methName), instruction, table.getSymbolId(context._1.last)) +:
+      val overridenSymbols = classStructure.findRootSymbols(sel.symbol.asInstanceOf[TermSymbol])
+      overridenSymbols.map(s => VCall(baseName, table.getSymbolId(s), instruction, table.getSymbolId(context._1.last))) ++:
         to.map(t => base match {
           // in the case of allocation 
           case New(tpt) => Move(t, baseName)
@@ -236,14 +239,4 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
     val prefix = ref.prefix.asInstanceOf[PackageRef]
     f"${prefix.fullyQualifiedName}.${ref.name}"
 
-  private def signatureFromDef(d: DefDef): String =
-    val List(Left(args)) = d.paramLists // TODO assumption: one single parameters list, no type params
-    d.name.toString + args.map(a => typeName(a.tpt)).mkString("(", ",", ")") // + ":" + typeName(d.resultTpt)
-
-  private def signatureFromCall(name: TermName): String =
-    val methSigName = name.asInstanceOf[SignedName]
-    methSigName.target.toString + methSigName.sig.paramsSig.map {
-      case ParamSig.Term(typ) => typ.toString
-      case ParamSig.TypeLen(len) => ??? // TODO what is this?
-    }.mkString("(", ",", ")")
 }
