@@ -31,9 +31,11 @@ object PointsToRuleSet extends RuleSet {
     val Defines = program.relation[String]("Defines")
     val NotDefines = program.relation[String]("NotDefines")
     val Extends = program.relation[String]("Extends")
+    val SuperCall = program.relation[String]("SuperCall")
+    val FieldValDef = program.relation[String]("FieldValDef")
 
     val varr, heap, meth, to, from, base, baseH, fld, ref = program.variable()
-    val toMeth, thiss, invo, sig, inMeth, heapT, n = program.variable()
+    val toMeth, thiss, thisFrom, invo, sig, inMeth, heapT, n, actualFld = program.variable()
     val classA, classB, classC = program.variable()
 
     VarPointsTo(varr, heap) :- (Reachable(meth), Alloc(varr, heap, meth))
@@ -69,12 +71,37 @@ object PointsToRuleSet extends RuleSet {
 
     CallGraph(invo, toMeth) :- (StaticCall(toMeth, invo, inMeth), Reachable(inMeth), StaticLookUp(toMeth))
 
-    Delegate(classC, sig, classC) :- Defines(classC, sig, meth)
+    // dynamic dispatch
+    LookUp(classC, sig, meth) :- Defines(classC, sig, meth)
+
+    LookUp(classC, sig, meth) :- (Delegate(classC, sig, classA), Defines(classA, sig, meth))
 
     Delegate(classC, sig, classA) :-
         (Delegate(classC, sig, classB), NotDefines(classB, sig), Extends(classB, classA))
 
-    LookUp(classC, sig, meth) :- (Delegate(classC, sig, classA), Defines(classA, sig, meth))
+    Delegate(classC, sig, classB) :- (NotDefines(classC, sig), Extends(classC, classB))
+
+    // super calls
+    Reachable(toMeth) :-
+        (SuperCall(toMeth, invo, inMeth), Reachable(inMeth),
+        ThisVar(inMeth, thisFrom), VarPointsTo(thisFrom, heap),
+        ThisVar(toMeth, thiss))
+
+    VarPointsTo(thiss, heap) :-
+        (SuperCall(toMeth, invo, inMeth), Reachable(inMeth),
+        ThisVar(inMeth, thisFrom), VarPointsTo(thisFrom, heap),
+        ThisVar(toMeth, thiss))
+
+    CallGraph(invo, toMeth) :-
+        (SuperCall(toMeth, invo, inMeth), Reachable(inMeth),
+        ThisVar(inMeth, thisFrom), VarPointsTo(thisFrom, heap),
+        ThisVar(toMeth, thiss))
+
+    VarPointsTo(to, heap) :-
+      (Load(to, base, fld), VarPointsTo(base, baseH),
+      HeapType(baseH, heapT), LookUp(heapT, fld, actualFld),
+      FieldValDef(actualFld, from),
+      VarPointsTo(from, heap))
 
     VarPointsTo
   }
