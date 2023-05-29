@@ -32,10 +32,10 @@ object Facts {
   case class Move(to: Variable, from: Variable) extends Fact
 
   // to := base.fld
-  case class Load(to: Variable, base: Variable, fld: Field) extends Fact
+  case class Load(to: Variable, base: Variable, fld: Variable) extends Fact
 
   // base.fld = from
-  case class Store(base: Variable, fld: Field, from: Variable) extends Fact
+  case class Store(base: Variable, fld: Variable, from: Variable) extends Fact
 
   // base.sig(...) at #invo inside inMeth
   case class VCall(
@@ -82,6 +82,10 @@ object Facts {
   case class Reachable(meth: Method) extends Fact
 
   case class StaticCall(meth: Method, invo: Instruction, inMeth: Method) extends Fact
+
+  case class SuperCall(meth: Method, invo: Instruction, inMeth: Method) extends Fact
+
+  case class FieldValDef(fld: Variable, from: Variable) extends Fact
 
   case class StaticLookUp(meth: Method) extends Fact
 

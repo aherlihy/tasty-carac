@@ -83,17 +83,23 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
       // values of arguments are assigned to instance fields
       val List(Left(args)) = rhs.constr.paramLists // TODO assumption: one single parameters list, no type params
       classStructure.definitionFacts(symbol) ++:
-      args.map(a => Store(initThis, a.name.toString, table.getSymbolId(a.symbol))) ++:
+      // args.map(a => Store(initThis, a.name.toString, table.getSymbolId(a.symbol))) ++:
       forInstanceMethod(rhs.constr) ++:
       rhs.body.flatMap {
         case d:DefDef =>
           forInstanceMethod(d)
 
-        // field declaration with a concrete value
-        case ValDef(name, tpt, Some(rhs), symbol) =>
-          val (rName, rIntermediate) = exprAsRef(rhs)(using initContext)
-          Store(initThis, name.toString, rName) +: rIntermediate
-        
+        // field declaration
+        case ValDef(name, tpt, rhs, symbol) =>
+          rhs match {
+            case None =>
+              args.find(a => a.name.toString == name.toString)
+                .map(from => FieldValDef(table.getSymbolId(symbol), table.getSymbolId(from.symbol)))
+            case Some(e) =>
+              val (rName, rIntermediate) = exprAsRef(e)(using initContext)
+              FieldValDef(table.getSymbolId(symbol), rName) +: rIntermediate
+          }
+
         // other statements are handled as if they were inside the constructor
         case other => breakTree(other)(using initContext)
       }
@@ -135,9 +141,20 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
     case v: Ident => to.map(Move(_, table.getSymbolId(v.symbol))).toSeq
     case This(tpe) => to.map(Move(_, context._2.get)).toSeq
 
-    case Select(base, fld) =>
+    case sel@Select(base, fld) =>
       val (baseName, baseIntermediate) = exprAsRef(base)
-      baseIntermediate ++ to.map(Load(_, baseName, fld.toString))
+      val overridenSymbols = classStructure.findRootSymbols(sel.symbol.asInstanceOf[TermSymbol])
+      baseIntermediate ++ to.map(t => overridenSymbols.map(s => Load(t, baseName, table.getSymbolId(s)))).getOrElse(Seq.empty)
+
+    // super.meth(...)
+    case Apply(sel@Select(Super(_, _), methName), args) =>
+      val instruction = getInstruction()
+      SuperCall(table.getSymbolId(sel.symbol), instruction, table.getSymbolId(context._1.last)) +:
+      to.map(ActualReturn(instruction, _)) ++:
+      args.zipWithIndex.flatMap { (t, i) =>
+        val (name, argIntermediate) = exprAsRef(t)
+        ActualArg(instruction, f"arg$i", name) +: argIntermediate
+      }
 
     // base.sig(...)
     case Apply(sel@Select(base, methName), args) =>
@@ -175,10 +192,11 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
         case v: Ident => breakExpr(rhs, Some(table.getSymbolId(v.symbol)))
 
         // base.fld := ... (base can be any expression!)
-        case Select(base, fld) =>
+        case sel@Select(base, fld) =>
           val (rName, rIntermediate) = exprAsRef(rhs)
           val (baseName, baseIntermediate) = exprAsRef(base)
-          Store(baseName, fld.toString, rName) +: rIntermediate ++: baseIntermediate
+          val overridenSymbols = classStructure.findRootSymbols(sel.symbol.asInstanceOf[TermSymbol])
+          overridenSymbols.map(s => Store(baseName, table.getSymbolId(s), rName)) ++: rIntermediate ++: baseIntermediate
 
         // TODO can this even happen?
         case _ => ???
