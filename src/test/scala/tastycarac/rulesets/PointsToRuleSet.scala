@@ -28,15 +28,19 @@ object PointsToRuleSet extends RuleSet {
     val Reachable = program.relation[String]("Reachable")
 
     val Delegate = program.relation[String]("Delegate")
-    val Defines = program.relation[String]("Defines")
+    val DefinesWith = program.relation[String]("DefinesWith")
     val NotDefines = program.relation[String]("NotDefines")
     val Extends = program.relation[String]("Extends")
     val SuperCall = program.relation[String]("SuperCall")
     val FieldValDef = program.relation[String]("FieldValDef")
 
+    val Refers = program.relation[String]("Refers")
+    val Overrides = program.relation[String]("Overrides")
+    val TopLevel = program.relation[String]("TopLevel")
+
     val varr, heap, meth, to, from, base, baseH, fld, ref = program.variable()
     val toMeth, thiss, thisFrom, invo, sig, inMeth, heapT, n, actualFld = program.variable()
-    val classA, classB, classC = program.variable()
+    val classA, classB, classC, sigA, sigB, sigC = program.variable()
 
     VarPointsTo(varr, heap) :- (Reachable(meth), Alloc(varr, heap, meth))
     VarPointsTo(to, heap) :- (Move(to, from), VarPointsTo(from, heap))
@@ -71,15 +75,18 @@ object PointsToRuleSet extends RuleSet {
 
     CallGraph(invo, toMeth) :- (StaticCall(toMeth, invo, inMeth), Reachable(inMeth), StaticLookUp(toMeth))
 
-    // dynamic dispatch
-    LookUp(classC, sig, meth) :- Defines(classC, sig, meth)
+    // without negation support, we generate NotDefines facts
+    LookUp(classC, sig, meth) :- DefinesWith(classC, sig, meth)
+    LookUp(classC, sigA, sigB) :- (LookUp(classB, sigA, sigB), NotDefines(classC, sigB), Extends(classC, classB))
+    DefinesWith(classC, sigA, sigC) :- (DefinesWith(classC, sigB, sigC), DefinesWith(classB, sigA, sigB))
+    DefinesWith(classC, sigC, sigC) :- DefinesWith(classC, sigB, sigC)
 
-    LookUp(classC, sig, meth) :- (Delegate(classC, sig, classA), Defines(classA, sig, meth))
-
-    Delegate(classC, sig, classA) :-
-        (Delegate(classC, sig, classB), NotDefines(classB, sig), Extends(classB, classA))
-
-    Delegate(classC, sig, classB) :- (NotDefines(classC, sig), Extends(classC, classB))
+    // with negations we would have something like:
+    // LookUp(classC, sig, meth) :- DefinesWith(classC, sig, meth)
+    // LookUp(classC, sigA, sigB) :- (LookUp(classB, sigA, sigB), Not(Defines(classC, sigB)), Extends(classC, classB))
+    // DefinesWith(classC, sigA, sigC) :- (DefinesWith(classC, sigB, sigC), DefinesWith(classB, sigA, sigB))
+    // DefinesWith(classC, sigC, sigC) :- DefinesWith(classC, sigB, sigC)
+    // Defines(classC, sigA) :- DefinesWith(classC, sigA, sigC)
 
     // super calls
     Reachable(toMeth) :-

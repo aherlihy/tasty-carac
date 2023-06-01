@@ -89,8 +89,8 @@ object Facts {
 
   case class StaticLookUp(meth: Method) extends Fact
 
-  case class Defines(typee: Type, sig: Variable, meth: Variable) extends Fact
-  case class NotDefines(typee: Type, sig: Variable) extends Fact
+  case class DefinesWith(typee: Type, parent: Variable, meth: Variable) extends Fact
+  case class NotDefines(typee: Type, parent: Variable) extends Fact
   case class Extends(typeA: Type, typeB: Type) extends Fact
 
   def exportFacts(facts: Seq[Fact], output: Path): Try[Unit] =

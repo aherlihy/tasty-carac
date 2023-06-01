@@ -143,8 +143,7 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
 
     case sel@Select(base, fld) =>
       val (baseName, baseIntermediate) = exprAsRef(base)
-      val overridenSymbols = classStructure.findRootSymbols(sel.symbol.asInstanceOf[TermSymbol])
-      baseIntermediate ++ to.map(t => overridenSymbols.map(s => Load(t, baseName, table.getSymbolId(s)))).getOrElse(Seq.empty)
+      baseIntermediate ++ to.map(t => Load(t, baseName, table.getSymbolId(sel.symbol)))
 
     // super.meth(...)
     case Apply(sel@Select(Super(_, _), methName), args) =>
@@ -160,8 +159,7 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
     case Apply(sel@Select(base, methName), args) =>
       val (baseName, baseIntermediate) = exprAsRef(base)
       val instruction = getInstruction()
-      val overridenSymbols = classStructure.findRootSymbols(sel.symbol.asInstanceOf[TermSymbol])
-      overridenSymbols.map(s => VCall(baseName, table.getSymbolId(s), instruction, table.getSymbolId(context._1.last))) ++:
+      VCall(baseName, table.getSymbolId(sel.symbol), instruction, table.getSymbolId(context._1.last)) +:
         to.map(t => base match {
           // in the case of allocation 
           case New(tpt) => Move(t, baseName)
@@ -195,8 +193,7 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
         case sel@Select(base, fld) =>
           val (rName, rIntermediate) = exprAsRef(rhs)
           val (baseName, baseIntermediate) = exprAsRef(base)
-          val overridenSymbols = classStructure.findRootSymbols(sel.symbol.asInstanceOf[TermSymbol])
-          overridenSymbols.map(s => Store(baseName, table.getSymbolId(s), rName)) ++: rIntermediate ++: baseIntermediate
+          Store(baseName, table.getSymbolId(sel.symbol), rName) +: rIntermediate ++: baseIntermediate
 
         // TODO can this even happen?
         case _ => ???
