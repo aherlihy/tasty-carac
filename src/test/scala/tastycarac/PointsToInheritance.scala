@@ -51,6 +51,7 @@ class PointsToInheritance
     val b_pc = query.pointsToSet("pointstoinheritance.Main.main.b_pc")
     val b_npc = query.pointsToSet("pointstoinheritance.Main.main.b_npc")
     val b_sup = query.pointsToSet("pointstoinheritance.Main.main.b_sup")
+    val b_traitVal = query.pointsToSet("pointstoinheritance.Main.main.b_traitVal")
 
     assertEquals(b_x, b_instance)
     assertEquals(b_xx, a_instance)
@@ -77,6 +78,7 @@ class PointsToInheritance
     val d_pc = query.pointsToSet("pointstoinheritance.Main.main.d_pc")
     val d_npc = query.pointsToSet("pointstoinheritance.Main.main.d_npc")
     val d_sup = query.pointsToSet("pointstoinheritance.Main.main.d_sup")
+    val d_traitVal = query.pointsToSet("pointstoinheritance.Main.main.d_traitVal")
 
     assertEquals(d_x, b_instance)
     assertEquals(d_xx, a_instance)
@@ -84,5 +86,6 @@ class PointsToInheritance
     assertEquals(d_pc, a_instance)
     assertEquals(d_npc, b_instance)
     assertEquals(d_sup, a_instance)
+    assertEquals(d_traitVal, b_instance)
   }
 }

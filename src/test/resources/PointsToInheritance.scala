@@ -6,6 +6,7 @@ class MyObjectB extends MyObject
 
 trait AA {
   val x: MyObject
+  val traitVal: MyObject = MyObjectA()
 }
 
 class A {
@@ -52,6 +53,7 @@ class C extends A {
 }
 
 class D extends B {
+  override val traitVal: MyObject = b_instance
   // make sure everything is from B and not A
 }
 
@@ -77,6 +79,7 @@ object Main {
     val b_pc = b.withPrivateCallB()
     val b_npc = b.withNonPrivateCallB()
     val b_sup = b.sup
+    val b_traitVal = b.traitVal
 
     val c_x = c.x
     val c_xx = c.xx
@@ -90,6 +93,7 @@ object Main {
     val d_pc = d.withPrivateCallD()
     val d_npc = d.withNonPrivateCallD()
     val d_sup = d.sup
+    val d_traitVal = d.traitVal
 
   }
 }

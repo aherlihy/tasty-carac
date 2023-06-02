@@ -85,6 +85,22 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
       classStructure.definitionFacts(symbol) ++:
       // args.map(a => Store(initThis, a.name.toString, table.getSymbolId(a.symbol))) ++:
       forInstanceMethod(rhs.constr) ++:
+      rhs.parents.flatMap {
+        case Apply(sel@Select(New(tpt), methName), args) =>
+          val instruction = getInstruction()
+          VCall(initThis, table.getSymbolId(sel.symbol), instruction, initSymbol) +:
+            args.zipWithIndex.flatMap { (t, i) =>
+              val (name, argIntermediate) = exprAsRef(t)(using initContext)
+              ActualArg(instruction, f"arg$i", name) +: argIntermediate
+            }
+
+        case t: TypeTree =>
+          extractClass(t.toType).map(classDef =>
+            VCall(initThis, table.getSymbolId(classDef.rhs.constr.symbol), getInstruction(), initSymbol)  
+          )
+          
+        case _ => ???
+      } ++:
       rhs.body.flatMap {
         case d:DefDef =>
           forInstanceMethod(d)
@@ -94,10 +110,14 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
           rhs match {
             case None =>
               args.find(a => a.name.toString == name.toString)
-                .map(from => FieldValDef(table.getSymbolId(symbol), table.getSymbolId(from.symbol)))
+                .map(from => Seq(
+                  Move(table.getSymbolId(symbol), table.getSymbolId(from.symbol)),
+                  FieldValDef(table.getSymbolId(symbol), table.getSymbolId(symbol))
+                )).getOrElse(Seq.empty)
             case Some(e) =>
               val (rName, rIntermediate) = exprAsRef(e)(using initContext)
-              FieldValDef(table.getSymbolId(symbol), rName) +: rIntermediate
+              Move(table.getSymbolId(symbol), rName) +:
+              FieldValDef(table.getSymbolId(symbol), table.getSymbolId(symbol)) +: rIntermediate
           }
 
         // other statements are handled as if they were inside the constructor
@@ -253,4 +273,12 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
     val prefix = ref.prefix.asInstanceOf[PackageRef]
     f"${prefix.fullyQualifiedName}.${ref.name}"
 
+
+  private def extractClass(t: Type): Option[ClassDef] = t match {
+    case ref: TypeRef => ref.optSymbol.get match {
+      case c: ClassSymbol => c.tree
+      case _ => ???
+    }
+    case _ => ???
+  }
 }
