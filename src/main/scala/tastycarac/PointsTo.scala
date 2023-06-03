@@ -232,9 +232,9 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
     case Block(stats, expr) =>
       stats.flatMap(breakTree) ++ breakExpr(expr, to)
     case If(cond, thenPart, elsePart) =>
-      breakExpr(cond, None) ++ breakExpr(thenPart, to) ++ breakExpr(thenPart, to)
+      breakExpr(cond, None) ++ breakExpr(thenPart, to) ++ breakExpr(elsePart, to)
     case InlineIf(cond, thenPart, elsePart) =>
-      breakExpr(cond, None) ++ breakExpr(thenPart, to) ++ breakExpr(thenPart, to)
+      breakExpr(cond, None) ++ breakExpr(thenPart, to) ++ breakExpr(elsePart, to)
     case Match(selector, cases) =>
       breakExpr(selector, None) ++ cases.flatMap(breakCase(_, to))
     case InlineMatch(selector, cases) => ???
