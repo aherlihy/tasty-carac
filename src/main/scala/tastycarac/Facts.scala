@@ -46,10 +46,10 @@ object Facts {
   ) extends Fact
 
   // def meth(..., arg, ...) where arg is the n-th argument
-  case class FormalArg(meth: Method, n: Index, arg: Variable) extends Fact
+  case class FormalArg(meth: Method, arglist: Index, n: Index, arg: Variable) extends Fact
 
   // meth(..., arg, ...) #invo where arg is the n-th argument
-  case class ActualArg(invo: Instruction, n: Index, arg: Variable) extends Fact
+  case class ActualArg(invo: Instruction, arglist: Index, n: Index, arg: Variable) extends Fact
 
   // meth returns variable arg at the end of its body
   case class FormalReturn(meth: Method, arg: Variable) extends Fact

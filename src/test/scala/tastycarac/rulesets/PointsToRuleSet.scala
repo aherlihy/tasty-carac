@@ -39,7 +39,7 @@ object PointsToRuleSet extends RuleSet {
     val TopLevel = program.relation[String]("TopLevel")
 
     val varr, heap, meth, to, from, base, baseH, fld, ref = program.variable()
-    val toMeth, thiss, thisFrom, invo, sig, inMeth, heapT, n, actualFld = program.variable()
+    val toMeth, thiss, thisFrom, invo, sig, inMeth, heapT, m, n, actualFld = program.variable()
     val classA, classB, classC, sigA, sigB, sigC = program.variable()
 
     VarPointsTo(varr, heap) :- (Reachable(meth), Alloc(varr, heap, meth))
@@ -65,7 +65,7 @@ object PointsToRuleSet extends RuleSet {
         HeapType(heap, heapT), LookUp(heapT, sig, toMeth),
         ThisVar(toMeth, thiss))
 
-    InterProcAssign(to, from) :- (CallGraph(invo, meth), FormalArg(meth, n, to), ActualArg(invo, n, from))
+    InterProcAssign(to, from) :- (CallGraph(invo, meth), FormalArg(meth, m, n, to), ActualArg(invo, m, n, from))
 
     InterProcAssign(to, from) :- (CallGraph(invo, meth), FormalReturn(meth, from), ActualReturn(invo, to))
 

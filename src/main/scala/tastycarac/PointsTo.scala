@@ -70,30 +70,30 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
       StaticLookUp(table.getSymbolId(symbol)) +:
       breakDefDef(d)(using (context._1 :+ symbol, context._2))
     
-    case cs@ClassDef(name, rhs, symbol) =>
-      val initSymbol = table.getSymbolId(rhs.constr.symbol)
+    case cs@ClassDef(name, template, symbol) =>
+      val initSymbol = table.getSymbolId(template.constr.symbol)
       val initThis = ThisSymbolId(initSymbol)
-      val initContext = (context._1 :+ rhs.constr.symbol, Some(initThis))
+      val initContext = (context._1 :+ template.constr.symbol, Some(initThis))
 
       def forInstanceMethod(d: DefDef) =
         val thisId = ThisSymbolId(table.getSymbolId(d.symbol))
         ThisVar(table.getSymbolId(d.symbol), thisId) +:
         breakDefDef(d)(using (context._1 :+ d.symbol, Some(thisId)))
 
-      // values of arguments are assigned to instance fields
-      val List(Left(args)) = rhs.constr.paramLists // TODO assumption: one single parameters list, no type params
       classStructure.definitionFacts(symbol) ++:
-      // args.map(a => Store(initThis, a.name.toString, table.getSymbolId(a.symbol))) ++:
-      forInstanceMethod(rhs.constr) ++:
-      rhs.parents.flatMap {
-        case Apply(sel@Select(New(tpt), methName), args) =>
+      forInstanceMethod(template.constr) ++:
+      template.parents.flatMap {
+        case call:Apply =>
+          val (fun, argLists) = unfoldCall(call)
           val instruction = getInstruction()
-          VCall(initThis, table.getSymbolId(sel.symbol), instruction, initSymbol) +:
-            args.zipWithIndex.flatMap { (t, i) =>
-              val (name, argIntermediate) = exprAsRef(t)(using initContext)
-              ActualArg(instruction, f"arg$i", name) +: argIntermediate
-            }
-
+          val argsFacts = argLists.zipWithIndex.flatMap((args, i) =>
+            args.zipWithIndex.flatMap((arg, j) =>
+              val (name, argIntermediate) = exprAsRef(arg)
+              ActualArg(instruction, f"list$i", f"arg$j", name) +: argIntermediate  
+            )
+          )
+          VCall(initThis, table.getSymbolId(fun.asInstanceOf[Select].symbol), instruction, initSymbol) +: argsFacts
+          
         case t: TypeTree =>
           extractClass(t.toType).map(classDef =>
             VCall(initThis, table.getSymbolId(classDef.rhs.constr.symbol), getInstruction(), initSymbol)  
@@ -101,7 +101,7 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
           
         case _ => ???
       } ++:
-      rhs.body.flatMap {
+      template.body.flatMap {
         case d:DefDef =>
           forInstanceMethod(d)
 
@@ -109,7 +109,7 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
         case ValDef(name, tpt, rhs, symbol) =>
           rhs match {
             case None =>
-              args.find(a => a.name.toString == name.toString)
+              template.constr.paramLists.collect { case Left(a) => a }.flatten.find(a => a.name.toString == name.toString)
                 .map(from => Seq(
                   Move(table.getSymbolId(symbol), table.getSymbolId(from.symbol)),
                   FieldValDef(table.getSymbolId(symbol), table.getSymbolId(symbol))
@@ -146,10 +146,12 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
 
   // method arguments, body and return
   private def breakDefDef(d: DefDef)(using context: ContextInfo): Seq[Fact] =
-    val List(Left(args)) = d.paramLists // TODO assumption: one single parameters list, no type params
-    args.zipWithIndex.map((vd, i) =>
-      FormalArg(table.getSymbolId(d.symbol), f"arg$i", table.getSymbolId(vd.symbol)) // TODO is the context already correct?
-    ) ++: d.rhs.map(r => {
+    d.paramLists.zipWithIndex.flatMap {
+      case (Left(args), i) => args.zipWithIndex.map((vd, j) =>
+        FormalArg(table.getSymbolId(d.symbol), f"list$i", f"arg$j", table.getSymbolId(vd.symbol))
+      )
+      case _ => Nil
+    } ++: d.rhs.map(r => {
       val (retName, retIntermediate) = exprAsRef(r) // TODO assumption: there is a return value
       FormalReturn(table.getSymbolId(d.symbol), retName) +:
       retIntermediate
@@ -164,44 +166,47 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
     case sel@Select(base, fld) =>
       val (baseName, baseIntermediate) = exprAsRef(base)
       baseIntermediate ++ to.map(t => Load(t, baseName, table.getSymbolId(sel.symbol)))
-
-    // super.meth(...)
-    case Apply(sel@Select(Super(_, _), methName), args) =>
+    
+    // TODO is it the same for TypeApply? What exactly happens in this case?
+    case call@Apply(fun, args) =>
+      val (fun, argLists) = unfoldCall(call)
       val instruction = getInstruction()
-      SuperCall(table.getSymbolId(sel.symbol), instruction, table.getSymbolId(context._1.last)) +:
-      to.map(ActualReturn(instruction, _)) ++:
-      args.zipWithIndex.flatMap { (t, i) =>
-        val (name, argIntermediate) = exprAsRef(t)
-        ActualArg(instruction, f"arg$i", name) +: argIntermediate
+
+      val callFacts = fun match {
+        case sel@Select(Super(_, _), methName) =>
+          SuperCall(table.getSymbolId(sel.symbol), instruction, table.getSymbolId(context._1.last)) +: Nil
+
+        case sel@Select(base@New(tpt), init) =>
+          val name = to.getOrElse(tempVar)
+          val allocationSite = f"new[${typeName(tpt)}]#${getAllocation()}"
+          HeapType(allocationSite, typeName(tpt)) +:
+          Alloc(name, allocationSite, table.getSymbolId(context._1.last)) +:
+          VCall(name, table.getSymbolId(sel.symbol), instruction, table.getSymbolId(context._1.last)) +: Nil
+
+        case sel@Select(base, methName) =>
+          val (baseName, baseIntermediate) = exprAsRef(base)
+          VCall(baseName, table.getSymbolId(sel.symbol), instruction, table.getSymbolId(context._1.last)) +: baseIntermediate
+
+        case id: Ident =>
+          StaticCall(table.getSymbolId(id.symbol), instruction, table.getSymbolId(context._1.last)) +: Nil
+
+        // are there other cases?
+        case _ => ???
       }
 
-    // base.sig(...)
-    case Apply(sel@Select(base, methName), args) =>
-      val (baseName, baseIntermediate) = exprAsRef(base)
-      val instruction = getInstruction()
-      VCall(baseName, table.getSymbolId(sel.symbol), instruction, table.getSymbolId(context._1.last)) +:
-        to.map(t => base match {
-          // in the case of allocation 
-          case New(tpt) => Move(t, baseName)
-          case _ => ActualReturn(instruction, t)
-        }) ++:
-        args.zipWithIndex.flatMap { (t, i) =>
-          val (name, argIntermediate) = exprAsRef(t)
-          ActualArg(instruction, f"arg$i", name) +: argIntermediate
-        } ++: baseIntermediate
-    
-    // static method call
-    case Apply(fun: Ident, args) =>
-      val instruction = getInstruction()
-      StaticCall(table.getSymbolId(fun.symbol), instruction, table.getSymbolId(context._1.last)) +:
-        to.map(ActualReturn(instruction, _)) ++:
-        args.zipWithIndex.flatMap { (t, i) =>
-          val (name, argIntermediate) = exprAsRef(t)
-          ActualArg(instruction, f"arg$i", name) +: argIntermediate
-        }
-    
-    // TODO can this case happen? If we have a lambda it would be l.apply(...)
-    case Apply(fun, args) => ???
+      val assign = fun match {
+        case Select(New(_), _) => None
+        case other => to.map(ActualReturn(instruction, _))
+      }
+
+      val argsFacts = argLists.zipWithIndex.flatMap((args, i) =>
+        args.zipWithIndex.flatMap((arg, j) =>
+          val (name, argIntermediate) = exprAsRef(arg)
+          ActualArg(instruction, f"list$i", f"arg$j", name) +: argIntermediate  
+        )
+      )
+
+      callFacts ++: assign ++: argsFacts
 
     // ... := ...
     case Assign(lhs, rhs) =>
@@ -220,10 +225,7 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
       }
     
     // allocation site
-    case New(tpt) =>
-      val allocationSite = f"new[${typeName(tpt)}]#${getAllocation()}"
-      HeapType(allocationSite, typeName(tpt)) +:
-        to.map(Alloc(_, allocationSite, table.getSymbolId(context._1.last))).toSeq
+    case New(tpt) => throw Error("Allocation should always be followed directly by a <init> calls")
     
     // { stats; expr }
     // TODO what about scope of blocks? we cannot simply use methods
@@ -245,7 +247,7 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
     case Super(qual, mix) => ???
     case Throw(expr) => ???
     case Try(expr, cases, finalizer) => ???
-    case TypeApply(fun, args) => ???
+    case TypeApply(fun, args) => println(fun); breakExpr(fun, to)
     case Typed(expr, tpt) => breakExpr(expr, to)
     case While(cond, body) => breakTree(cond) ++ breakTree(body)
     case Literal(_) => Seq.empty
@@ -258,9 +260,12 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
     case v: Ident => (table.getSymbolId(v.symbol), Seq.empty)
     case This(tpe) => (context._2.get, Seq.empty)
     case other =>
-      val temp = table.getSymbolIdFromPath(fullPath(context._1.last) :+ SimpleName("temp"))
+      val temp = tempVar
       (temp, breakExpr(other, Some(temp))) // this call does not require the Ident case
   }
+
+  private def tempVar(using context: ContextInfo): SymbolId =
+    table.getSymbolIdFromPath(fullPath(context._1.last) :+ SimpleName("temp"))
 
   private def localName(s: Symbol, context: Seq[Symbol]) =
     f"${context.last.fullName}.${s.name}"
@@ -277,8 +282,16 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
   private def extractClass(t: Type): Option[ClassDef] = t match {
     case ref: TypeRef => ref.optSymbol.get match {
       case c: ClassSymbol => c.tree
-      case _ => ???
+      case t: TypeMemberSymbol => extractClass(t.aliasedType)
+      case other => println(other.getClass()); ???
     }
     case _ => ???
   }
+
+  private def unfoldCall(call: TermTree, acc: List[List[TermTree]] = Nil): (TermTree, List[List[TermTree]]) =
+    call match {
+      case Apply(fun, args) => unfoldCall(fun, args :: acc)
+      case TypeApply(fun, args) => unfoldCall(fun, Nil :: acc)
+      case term => (term, acc)
+    }
 }
