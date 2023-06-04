@@ -24,6 +24,7 @@ import tastyquery.Names.TermName
 import tastyquery.Signatures.ParamSig
 import tastyquery.Types.TypeLambda
 import tastyquery.Types.AppliedType
+import tastyquery.Flags
 
 class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
   var instructionId = 0
@@ -161,54 +162,21 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
 
   // current assumption: all (interesting?) method calls are of the form base.sig(...)
   private def breakExpr(e: TermTree, to: Option[Variable])(using context: ContextInfo): Seq[Fact] = e match {
-    // TODO these 2 cases are slightly awkward, should be moved elsewhere
-    case v: Ident => to.map(Move(_, table.getSymbolId(v.symbol))).toSeq
+    case v: Ident =>
+      if v.symbol.flags.is(Flags.Method) then handleCall(v, to)
+      else to.map(Move(_, table.getSymbolId(v.symbol))).toSeq
+    
     case This(tpe) => to.map(Move(_, context._2.get)).toSeq
 
     case sel@Select(base, fld) =>
-      val (baseName, baseIntermediate) = exprAsRef(base)
-      baseIntermediate ++ to.map(t => Load(t, baseName, table.getSymbolId(sel.symbol)))
+      if sel.symbol.flags.is(Flags.Method) then
+        handleCall(sel, to)
+      else
+        val (baseName, baseIntermediate) = exprAsRef(base)
+        baseIntermediate ++ to.map(t => Load(t, baseName, table.getSymbolId(sel.symbol)))
     
     // TODO is it the same for TypeApply? What exactly happens in this case?
-    case call@Apply(fun, args) =>
-      val (fun, argLists) = unfoldCall(call)
-      val instruction = getInstruction()
-
-      val callFacts = fun match {
-        case sel@Select(Super(_, _), methName) =>
-          SuperCall(table.getSymbolId(sel.symbol), instruction, table.getSymbolId(context._1.last)) +: Nil
-
-        case sel@Select(base@New(tpt), init) =>
-          val name = to.getOrElse(tempVar)
-          val allocationSite = f"new[${table.getSymbolId(typeToClassSymbol(tpt.toType))}]#${getAllocation()}"
-          HeapType(allocationSite, table.getSymbolId(typeToClassSymbol(tpt.toType))) +:
-          Alloc(name, allocationSite, table.getSymbolId(context._1.last)) +:
-          VCall(name, table.getSymbolId(sel.symbol), instruction, table.getSymbolId(context._1.last)) +: Nil
-
-        case sel@Select(base, methName) =>
-          val (baseName, baseIntermediate) = exprAsRef(base)
-          VCall(baseName, table.getSymbolId(sel.symbol), instruction, table.getSymbolId(context._1.last)) +: baseIntermediate
-
-        case id: Ident =>
-          StaticCall(table.getSymbolId(id.symbol), instruction, table.getSymbolId(context._1.last)) +: Nil
-
-        // are there other cases?
-        case _ => ???
-      }
-
-      val assign = fun match {
-        case Select(New(_), _) => None
-        case other => to.map(ActualReturn(instruction, _))
-      }
-
-      val argsFacts = argLists.zipWithIndex.flatMap((args, i) =>
-        args.zipWithIndex.flatMap((arg, j) =>
-          val (name, argIntermediate) = exprAsRef(arg)
-          ActualArg(instruction, f"list$i", f"arg$j", name) +: argIntermediate  
-        )
-      )
-
-      callFacts ++: assign ++: argsFacts
+    case call@Apply(fun, args) => handleCall(call, to)
 
     // ... := ...
     case Assign(lhs, rhs) =>
@@ -286,6 +254,46 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
   }
 
   private def typeToClassDef(t: Type): Option[ClassDef] = typeToClassSymbol(t).tree
+
+  private def handleCall(call: TermTree, to: Option[Variable])(using context: ContextInfo): Seq[Fact] =
+    val (fun, argLists) = unfoldCall(call)
+    val instruction = getInstruction()
+
+    val callFacts = fun match {
+      case sel@Select(Super(_, _), methName) =>
+        SuperCall(table.getSymbolId(sel.symbol), instruction, table.getSymbolId(context._1.last)) +: Nil
+
+      case sel@Select(base@New(tpt), init) =>
+        val name = to.getOrElse(tempVar)
+        val allocationSite = f"new[${table.getSymbolId(typeToClassSymbol(tpt.toType))}]#${getAllocation()}"
+        HeapType(allocationSite, table.getSymbolId(typeToClassSymbol(tpt.toType))) +:
+        Alloc(name, allocationSite, table.getSymbolId(context._1.last)) +:
+        VCall(name, table.getSymbolId(sel.symbol), instruction, table.getSymbolId(context._1.last)) +: Nil
+
+      case sel@Select(base, methName) =>
+        val (baseName, baseIntermediate) = exprAsRef(base)
+        VCall(baseName, table.getSymbolId(sel.symbol), instruction, table.getSymbolId(context._1.last)) +: baseIntermediate
+
+      case id: Ident =>
+        StaticCall(table.getSymbolId(id.symbol), instruction, table.getSymbolId(context._1.last)) +: Nil
+
+      // are there other cases?
+      case _ => ???
+    }
+
+    val assign = fun match {
+      case Select(New(_), _) => None
+      case other => to.map(ActualReturn(instruction, _))
+    }
+
+    val argsFacts = argLists.zipWithIndex.flatMap((args, i) =>
+      args.zipWithIndex.flatMap((arg, j) =>
+        val (name, argIntermediate) = exprAsRef(arg)
+        ActualArg(instruction, f"list$i", f"arg$j", name) +: argIntermediate  
+      )
+    )
+
+    callFacts ++: assign ++: argsFacts
 
   private def unfoldCall(call: TermTree, acc: List[List[TermTree]] = Nil): (TermTree, List[List[TermTree]]) =
     call match {
