@@ -217,7 +217,7 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
     case Super(qual, mix) => ???
     case Throw(expr) => ???
     case Try(expr, cases, finalizer) => ???
-    case TypeApply(fun, args) => println(fun); breakExpr(fun, to)
+    case app@TypeApply(fun, args) => handleCall(app, to)
     case Typed(expr, tpt) => breakExpr(expr, to)
     case While(cond, body) => breakTree(cond) ++ breakTree(body)
     case Literal(_) => Seq.empty
