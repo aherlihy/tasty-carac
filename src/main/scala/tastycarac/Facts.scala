@@ -20,7 +20,7 @@ object Facts {
   type Signature = SymbolId
   type Field = String
   type Instruction = String
-  type Type = String
+  type Type = SymbolId
   type Index = String
 
   abstract class Fact extends Product

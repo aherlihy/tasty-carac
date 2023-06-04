@@ -30,13 +30,13 @@ class ClassStructure(table: Table)(using Context) {
     val defined = cs.declarations.flatMap(s =>
       s.allOverriddenSymbols.toList match {
         case Nil => DefinesWith(
-            table.getSymbolId(cs).toString,
+            table.getSymbolId(cs),
             table.getSymbolId(s),
             table.getSymbolId(s)
           ) :: Nil
         case l => l.map(r => 
           DefinesWith(
-            table.getSymbolId(cs).toString,
+            table.getSymbolId(cs),
             table.getSymbolId(r),
             table.getSymbolId(s)
           )
@@ -44,9 +44,9 @@ class ClassStructure(table: Table)(using Context) {
       })
     
     // if we have negations we don't need to generate these facts
-    val inheritedDefintions = inherited(cs).map(s => NotDefines(table.getSymbolId(cs).toString, table.getSymbolId(s)))
+    val inheritedDefintions = inherited(cs).map(s => NotDefines(table.getSymbolId(cs), table.getSymbolId(s)))
 
     cs.parentClasses.map(c =>
-      Extends(table.getSymbolId(cs).toString, table.getSymbolId(c).toString)
+      Extends(table.getSymbolId(cs), table.getSymbolId(c))
     ) ++ defined ++ inheritedDefintions
 }

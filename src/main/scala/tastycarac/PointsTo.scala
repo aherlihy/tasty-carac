@@ -22,6 +22,8 @@ import tastyquery.Symbols
 import tastyquery.Types.Type
 import tastyquery.Names.TermName
 import tastyquery.Signatures.ParamSig
+import tastyquery.Types.TypeLambda
+import tastyquery.Types.AppliedType
 
 class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
   var instructionId = 0
@@ -95,7 +97,7 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
           VCall(initThis, table.getSymbolId(fun.asInstanceOf[Select].symbol), instruction, initSymbol) +: argsFacts
           
         case t: TypeTree =>
-          extractClass(t.toType).map(classDef =>
+          typeToClassDef(t.toType).map(classDef =>
             VCall(initThis, table.getSymbolId(classDef.rhs.constr.symbol), getInstruction(), initSymbol)  
           )
           
@@ -178,8 +180,8 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
 
         case sel@Select(base@New(tpt), init) =>
           val name = to.getOrElse(tempVar)
-          val allocationSite = f"new[${typeName(tpt)}]#${getAllocation()}"
-          HeapType(allocationSite, typeName(tpt)) +:
+          val allocationSite = f"new[${table.getSymbolId(typeToClassSymbol(tpt.toType))}]#${getAllocation()}"
+          HeapType(allocationSite, table.getSymbolId(typeToClassSymbol(tpt.toType))) +:
           Alloc(name, allocationSite, table.getSymbolId(context._1.last)) +:
           VCall(name, table.getSymbolId(sel.symbol), instruction, table.getSymbolId(context._1.last)) +: Nil
 
@@ -270,23 +272,20 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
   private def localName(s: Symbol, context: Seq[Symbol]) =
     f"${context.last.fullName}.${s.name}"
 
-  private def typeName(t: TypeTree): String =
-    typeName(t.toType)
-
-  private def typeName(tpe: Type) =
-    val ref = tpe.asInstanceOf[TypeRef]
-    val prefix = ref.prefix.asInstanceOf[PackageRef]
-    f"${prefix.fullyQualifiedName}.${ref.name}"
-
-
-  private def extractClass(t: Type): Option[ClassDef] = t match {
+  private def typeToClassSymbol(t: Type): ClassSymbol = t match {
     case ref: TypeRef => ref.optSymbol.get match {
-      case c: ClassSymbol => c.tree
-      case t: TypeMemberSymbol => extractClass(t.aliasedType)
-      case other => println(other.getClass()); ???
+      case c: ClassSymbol => c
+      case t: TypeMemberSymbol => typeToClassSymbol(t.aliasedType)
+      case _ => ???
+    }
+    case lambda: TypeLambda => lambda.resultType match {
+      case a: AppliedType => typeToClassSymbol(a.tycon)
+      case _ => ???
     }
     case _ => ???
   }
+
+  private def typeToClassDef(t: Type): Option[ClassDef] = typeToClassSymbol(t).tree
 
   private def unfoldCall(call: TermTree, acc: List[List[TermTree]] = Nil): (TermTree, List[List[TermTree]]) =
     call match {
