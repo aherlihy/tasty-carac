@@ -19,6 +19,10 @@ object Symbols {
     override def toString(): String = f"${meth.toString}.this" 
   }
 
+  case object GlobalContext extends SymbolId {
+    override def toString(): String = "$GLOBAL"
+  }
+
   class Table {
     val duplicates = mutable.Map.empty[List[Name], Int]
     val symbolIds = mutable.Map.empty[Symbol, SymbolId]

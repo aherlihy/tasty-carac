@@ -33,7 +33,7 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
   val table = Table()
   val classStructure = ClassStructure(table)
 
-  type ContextInfo = (Seq[Symbol], Option[ThisSymbolId])
+  type ContextInfo = (Option[Symbol], Option[ThisSymbolId])
 
   private def getInstruction() = {
     val id = instructionId
@@ -61,7 +61,7 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
     Reachable(table.getSymbolId(mainMethod)) +: trees.map(generateFacts).reduce(_ ++ _)
 
   def generateFacts(cls: ClassSymbol): Seq[Fact] =
-    cls.tree.map(breakTree(_)(using (Seq.empty, None))).getOrElse(Seq.empty)
+    cls.tree.map(breakTree(_)(using (None, None))).getOrElse(Seq.empty)
 
   private def breakTree(s: Tree)(using context: ContextInfo): Seq[Fact] = s match {
     // val a = ...
@@ -70,17 +70,17 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
 
     // (static) method definition
     case d@DefDef(name, params, tpt, rhs, symbol) =>
-      breakDefDef(d)(using (context._1 :+ symbol, context._2))
+      breakDefDef(d)(using (Some(symbol), context._2))
     
     case cs@ClassDef(name, template, symbol) =>
       val initSymbol = table.getSymbolId(template.constr.symbol)
       val initThis = ThisSymbolId(initSymbol)
-      val initContext = (context._1 :+ template.constr.symbol, Some(initThis))
+      val initContext = (Some(template.constr.symbol), Some(initThis))
 
       def forInstanceMethod(d: DefDef) =
         val thisId = ThisSymbolId(table.getSymbolId(d.symbol))
         ThisVar(table.getSymbolId(d.symbol), thisId) +:
-        breakDefDef(d)(using (context._1 :+ d.symbol, Some(thisId)))
+        breakDefDef(d)(using (Some(d.symbol), Some(thisId)))
 
       classStructure.definitionFacts(symbol) ++:
       forInstanceMethod(template.constr) ++:
@@ -226,7 +226,11 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
 
   // we need to use this when a fact require a name but we might need intermediate facts
   private def exprAsRef(e: TermTree)(using context: ContextInfo): (Variable, Seq[Fact]) = e match {
-    case v: Ident => (table.getSymbolId(v.symbol), Seq.empty)
+    case v: Ident =>
+      if v.symbol.flags.is(Flags.Method) then
+        val temp = tempVar
+        (temp, handleCall(v, Some(temp)))
+      else (table.getSymbolId(v.symbol), Seq.empty)
     case This(tpe) => (context._2.get, Seq.empty)
     case other =>
       val temp = tempVar
@@ -260,21 +264,21 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
 
     val callFacts = fun match {
       case sel@Select(Super(_, _), methName) =>
-        SuperCall(table.getSymbolId(sel.symbol), instruction, table.getSymbolId(context._1.last)) +: Nil
+        SuperCall(table.getSymbolId(sel.symbol), instruction, contextId) +: Nil
 
       case sel@Select(base@New(tpt), init) =>
         val name = to.getOrElse(tempVar)
         val allocationSite = f"new[${table.getSymbolId(typeToClassSymbol(tpt.toType))}]#${getAllocation()}"
         HeapType(allocationSite, table.getSymbolId(typeToClassSymbol(tpt.toType))) +:
-        Alloc(name, allocationSite, table.getSymbolId(context._1.last)) +:
-        VCall(name, table.getSymbolId(sel.symbol), instruction, table.getSymbolId(context._1.last)) +: Nil
+        Alloc(name, allocationSite, contextId) +:
+        VCall(name, table.getSymbolId(sel.symbol), instruction, contextId) +: Nil
 
       case sel@Select(base, methName) =>
         val (baseName, baseIntermediate) = exprAsRef(base)
-        VCall(baseName, table.getSymbolId(sel.symbol), instruction, table.getSymbolId(context._1.last)) +: baseIntermediate
+        VCall(baseName, table.getSymbolId(sel.symbol), instruction, contextId) +: baseIntermediate
 
       case id: Ident =>
-        StaticCall(table.getSymbolId(id.symbol), instruction, table.getSymbolId(context._1.last)) +: Nil
+        StaticCall(table.getSymbolId(id.symbol), instruction, contextId) +: Nil
 
       // are there other cases?
       case _ => ???
@@ -300,4 +304,7 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
       case TypeApply(fun, args) => unfoldCall(fun, Nil :: acc)
       case term => (term, acc)
     }
+
+  private def contextId(using context: ContextInfo): SymbolId =
+    context._1.map(table.getSymbolId(_)).getOrElse(GlobalContext)
 }
