@@ -71,9 +71,9 @@ object PointsToRuleSet extends RuleSet {
 
     VarPointsTo(to, heap) :- (InterProcAssign(to, from), VarPointsTo(from, heap))
 
-    Reachable(toMeth) :- (StaticCall(toMeth, invo, inMeth), Reachable(inMeth), StaticLookUp(toMeth))
+    Reachable(toMeth) :- (StaticCall(toMeth, invo, inMeth), Reachable(inMeth))
 
-    CallGraph(invo, toMeth) :- (StaticCall(toMeth, invo, inMeth), Reachable(inMeth), StaticLookUp(toMeth))
+    CallGraph(invo, toMeth) :- (StaticCall(toMeth, invo, inMeth), Reachable(inMeth))
 
     // without negation support, we generate NotDefines facts
     LookUp(classC, sig, meth) :- DefinesWith(classC, sig, meth)

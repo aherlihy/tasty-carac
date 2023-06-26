@@ -87,8 +87,6 @@ object Facts {
 
   case class FieldValDef(fld: Variable, from: Variable) extends Fact
 
-  case class StaticLookUp(meth: Method) extends Fact
-
   case class DefinesWith(typee: Type, parent: Variable, meth: Variable) extends Fact
   case class NotDefines(typee: Type, parent: Variable) extends Fact
   case class Extends(typeA: Type, typeB: Type) extends Fact

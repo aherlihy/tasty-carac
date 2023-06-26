@@ -70,7 +70,6 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
 
     // (static) method definition
     case d@DefDef(name, params, tpt, rhs, symbol) =>
-      StaticLookUp(table.getSymbolId(symbol)) +:
       breakDefDef(d)(using (context._1 :+ symbol, context._2))
     
     case cs@ClassDef(name, template, symbol) =>
