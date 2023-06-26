@@ -210,7 +210,7 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
       // breakExpr(selector, None) ++ cases.flatMap(breakCase(_, to))
     case Inlined(expr, caller, bindings) => ???
     case Lambda(meth, tpt) => ???
-    case NamedArg(name, arg) => ???
+    case NamedArg(name, arg) => breakExpr(arg, to)
     case Return(expr, from) => ???
     case SeqLiteral(elems, elemtpt) => ???
     case Super(qual, mix) => ???
