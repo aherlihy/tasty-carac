@@ -45,7 +45,7 @@ object PointsToRuleSet extends RuleSet {
     VarPointsTo(varr, heap) :- (Reachable(meth), Alloc(varr, heap, meth))
     VarPointsTo(to, heap) :- (Move(to, from), VarPointsTo(from, heap))
     FldPointsTo(baseH, fld, heap) :- (Store(base, fld, from), VarPointsTo(from, heap), VarPointsTo(base, baseH))
-    VarPointsTo(to, heap) :- (Load(to, base, fld), VarPointsTo(base, baseH), FldPointsTo(baseH, fld, heap))
+    VarPointsTo(to, heap) :- (Load(to, base, fld, inMeth), VarPointsTo(base, baseH), FldPointsTo(baseH, fld, heap))
 
     Reachable(toMeth) :-
       (VCall(base, sig, invo, inMeth), Reachable(inMeth),
@@ -64,6 +64,28 @@ object PointsToRuleSet extends RuleSet {
         VarPointsTo(base, heap),
         HeapType(heap, heapT), LookUp(heapT, sig, toMeth),
         ThisVar(toMeth, thiss))
+
+    // rules for dynamic val
+    Reachable(toMeth ) :-
+        (Load(to, base, sig, inMeth), Reachable(inMeth),
+        VarPointsTo(base, heap),
+        HeapType(heap, heapT), LookUp(heapT, sig, toMeth),
+        ThisVar(toMeth, thiss),
+        FormalReturn(toMeth, from))
+
+    VarPointsTo(thiss, heap) :-
+        (Load(to, base, sig, inMeth), Reachable(inMeth),
+        VarPointsTo(base, heap),
+        HeapType(heap, heapT), LookUp(heapT, sig, toMeth),
+        ThisVar(toMeth, thiss),
+        FormalReturn(toMeth, from))
+
+    InterProcAssign(to, from) :-
+        (Load(to, base, sig, inMeth), Reachable(inMeth),
+        VarPointsTo(base, heap),
+        HeapType(heap, heapT), LookUp(heapT, sig, toMeth),
+        ThisVar(toMeth, thiss),
+        FormalReturn(toMeth, from))
 
     InterProcAssign(to, from) :- (CallGraph(invo, meth), FormalArg(meth, m, n, to), ActualArg(invo, m, n, from))
 
@@ -105,7 +127,7 @@ object PointsToRuleSet extends RuleSet {
         ThisVar(toMeth, thiss))
 
     VarPointsTo(to, heap) :-
-      (Load(to, base, fld), VarPointsTo(base, baseH),
+      (Load(to, base, fld, inMeth), VarPointsTo(base, baseH),
       HeapType(baseH, heapT), LookUp(heapT, fld, actualFld),
       FieldValDef(actualFld, from),
       VarPointsTo(from, heap))

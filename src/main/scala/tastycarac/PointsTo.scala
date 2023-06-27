@@ -54,7 +54,6 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
   }
 
   def generateFacts(mainPath: String): Seq[Fact] =
-    // TODO HANDLE ENTRY POINT
     val path = mainPath.split('.').toList
     val classSymbol = ctx.findTopLevelModuleClass(path.init.mkString("."))
     val mainMethod = classSymbol.declarations.find(_.name.toString == path.last).get
@@ -154,7 +153,7 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
       )
       case _ => Nil
     } ++: d.rhs.map(r => {
-      val (retName, retIntermediate) = exprAsRef(r) // TODO assumption: there is a return value
+      val (retName, retIntermediate) = exprAsRef(r)
       FormalReturn(table.getSymbolId(d.symbol), retName) +:
       retIntermediate
     }).getOrElse(Seq.empty)
@@ -168,13 +167,9 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
     case This(tpe) => to.map(Move(_, context._2.get)).toSeq
 
     case sel@Select(base, fld) =>
-      if sel.symbol.flags.is(Flags.Method) then
-        handleCall(sel, to)
-      else
-        val (baseName, baseIntermediate) = exprAsRef(base)
-        baseIntermediate ++ to.map(t => Load(t, baseName, table.getSymbolId(sel.symbol)))
+      val (baseName, baseIntermediate) = exprAsRef(base)
+      baseIntermediate ++ to.map(t => Load(t, baseName, table.getSymbolId(sel.symbol), contextId))
     
-    // TODO is it the same for TypeApply? What exactly happens in this case?
     case call@Apply(fun, args) => handleCall(call, to)
 
     // ... := ...
@@ -197,7 +192,6 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
     case New(tpt) => throw Error("Allocation should always be followed directly by a <init> calls")
     
     // { stats; expr }
-    // TODO what about scope of blocks? we cannot simply use methods
     case Block(stats, expr) =>
       stats.flatMap(breakTree) ++ breakExpr(expr, to)
     case If(cond, thenPart, elsePart) =>

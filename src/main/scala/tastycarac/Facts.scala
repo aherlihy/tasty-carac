@@ -32,7 +32,7 @@ object Facts {
   case class Move(to: Variable, from: Variable) extends Fact
 
   // to := base.fld
-  case class Load(to: Variable, base: Variable, fld: Variable) extends Fact
+  case class Load(to: Variable, base: Variable, fld: Variable, inMeth: Method) extends Fact
 
   // base.fld = from
   case class Store(base: Variable, fld: Variable, from: Variable) extends Fact
