@@ -168,11 +168,8 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
     case This(tpe) => to.map(Move(_, context._2.get)).toSeq
 
     case sel@Select(base, fld) =>
-      if sel.symbol.flags.is(Flags.Method) then
-        handleCall(sel, to)
-      else
-        val (baseName, baseIntermediate) = exprAsRef(base)
-        baseIntermediate ++ to.map(t => Load(t, baseName, table.getSymbolId(sel.symbol)))
+      val (baseName, baseIntermediate) = exprAsRef(base)
+      baseIntermediate ++ to.map(t => Load(t, baseName, table.getSymbolId(sel.symbol), contextId))
     
     // TODO is it the same for TypeApply? What exactly happens in this case?
     case call@Apply(fun, args) => handleCall(call, to)
