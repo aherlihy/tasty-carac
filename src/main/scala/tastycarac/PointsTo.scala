@@ -184,12 +184,8 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
           val (baseName, baseIntermediate) = exprAsRef(base)
           Store(baseName, table.getSymbolId(sel.symbol), rName) +: rIntermediate ++: baseIntermediate
 
-        // TODO can this even happen?
-        case _ => ???
+        case _ => throw Error(f"Unkown use of assignment operator")
       }
-    
-    // allocation site
-    case New(tpt) => throw Error("Allocation should always be followed directly by a <init> calls")
     
     // { stats; expr }
     case Block(stats, expr) =>
@@ -200,21 +196,35 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
       breakExpr(cond, None) ++ breakExpr(thenPart, to) ++ breakExpr(elsePart, to)
     case Match(selector, cases) =>
       breakExpr(selector, None) ++ cases.flatMap(breakCase(_, to))
-    case InlineMatch(selector, cases) => ???
-      // breakExpr(selector, None) ++ cases.flatMap(breakCase(_, to))
-    case Inlined(expr, caller, bindings) => ???
-    case Lambda(meth, tpt) => ???
-    case NamedArg(name, arg) => breakExpr(arg, to)
-    case Return(expr, from) => ???
-    case SeqLiteral(elems, elemtpt) => ???
-    case Super(qual, mix) => ???
-    case Throw(expr) => ???
-    case Try(expr, cases, finalizer) => ???
-    case app@TypeApply(fun, args) => handleCall(app, to)
-    case Typed(expr, tpt) => breakExpr(expr, to)
-    case While(cond, body) => breakTree(cond) ++ breakTree(body)
+    case InlineMatch(selector, cases) =>
+      selector.map(s => breakExpr(s, None)).getOrElse(Seq.empty) ++ cases.flatMap(breakCase(_, to))
+    case Inlined(expr, caller, bindings) =>
+      bindings.flatMap(breakTree) ++ breakExpr(expr, to)
+    case Lambda(meth, tpt) =>
+      ???
+    case NamedArg(name, arg) =>
+      breakExpr(arg, to)
+    case Return(expr, from) =>
+      expr.map(e => {
+        val (res, intermediate) = exprAsRef(e)
+        intermediate :+ FormalReturn(contextId, res)
+      }).getOrElse(Seq.empty)
+    case SeqLiteral(elems, elemtpt) =>
+      ???
+    case Throw(expr) =>
+      breakExpr(expr, None)
+    case Try(expr, cases, finalizer) =>
+      breakExpr(expr, to) ++ cases.flatMap(breakCase(_, to)) ++ finalizer.map(breakExpr(_, None)).getOrElse(Seq.empty)
+    case app@TypeApply(fun, args) =>
+      handleCall(app, to)
+    case Typed(expr, tpt) =>
+      breakExpr(expr, to)
+    case While(cond, body) =>
+      breakTree(cond) ++ breakTree(body)
     case Literal(_) => Seq.empty
-    case _ => ???
+
+    case New(tpt) => throw Error("Allocation should always be followed directly by a <init> calls")
+    case Super(qual, mix) => throw Error("Keyword `super` should always be used with a call")
   }
   
 
