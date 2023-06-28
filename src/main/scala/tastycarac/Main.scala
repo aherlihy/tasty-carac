@@ -16,6 +16,15 @@ import scala.annotation.meta.param
 import scala.util.Failure
 import scala.util.Success
 import tastycarac.PointsTo
+import coursier.Fetch
+import coursier.Dependency
+import coursier.core.Organization
+import coursier.core.ModuleName
+import coursier.core.Module
+import datalog.execution.SemiNaiveExecutionEngine
+import datalog.storage.DefaultStorageManager
+import datalog.dsl.Program
+import tastycarac.rulesets.PointsToRuleSet
 
 abstract class Test
 abstract class T2 extends Test
@@ -27,7 +36,8 @@ object Main {
       output: Option[Path] = None,
       mainMethod: String = "Main.main",
       help: Boolean = false,
-      print: Boolean = false
+      print: Boolean = false,
+      factsOnly: Boolean = false,
   )
 
   val usage = "Usage: tastycarac [-h] [-m main] [-o output] classpath"
@@ -55,6 +65,29 @@ object Main {
             )
         
         }
+
+      if !config.factsOnly then {
+        val engine = SemiNaiveExecutionEngine(DefaultStorageManager())
+        val program = Program(engine)
+        val toSolve = PointsToRuleSet.defineRules(program)
+
+        for (f <- facts) {
+          program.namedRelation(f.productPrefix).apply(f.productIterator.map(_.toString).toSeq:_*) :- ()
+        }
+
+        toSolve.solve()
+        
+        val pointstoSets: Map[String, Set[String]] = program.namedRelation("VarPointsTo").get().map {
+          case Seq(from: String, to: String) => (from, to)
+        }.groupBy(_._1).mapValues(_.map(_._2)).toMap
+
+        println("========================================================")
+        println(f"Computed points-to sets for ${pointstoSets.size} variables")
+        println("Inferred points-to sets:")
+
+        for ((variable, set) <- pointstoSets)
+          println(f"- ${variable} -> {${set.mkString(", ")}}")
+      }
     }
   }
 
@@ -67,14 +100,23 @@ object Main {
       case ("-h" | "--help") :: tail => Config(help = true)
       case ("-p" | "--print") :: tail =>
         parseArgs(tail, acc.copy(print = true))
+      case ("-f" | "--factsonly") :: tail =>
+        parseArgs(tail, acc.copy(factsOnly = true))
       case classPath :: tail =>
         parseArgs(tail, acc.copy(classPath = Some(Path.of(classPath))))
       case Nil => acc
     }
 
   def inspect(input: Path, mainMethod: String) = {
-    // val stdLibPaths = FileSystems.getFileSystem(java.net.URI.create("jrt:/")).getPath("modules", "java.base")
-    val classpath = ClasspathLoaders.read(List(input))
+    val module = Dependency(Module(Organization("org.scala-lang"), ModuleName("scala3-library_3"), Map.empty), "3.2.2")
+
+    val scalaStdLib = Fetch()
+      .addDependencies(module)
+      .run().map(_.toPath()).toList
+    
+    val javaStdLib = FileSystems.getFileSystem(java.net.URI.create("jrt:/")).getPath("modules", "java.base")
+
+    val classpath = ClasspathLoaders.read(input :: javaStdLib :: scalaStdLib)
     given Context = Contexts.init(classpath)
     val myLibSyms = ctx.findSymbolsByClasspathEntry(classpath.entries.head)
     val trees = myLibSyms.collect { case cs: ClassSymbol => cs }
