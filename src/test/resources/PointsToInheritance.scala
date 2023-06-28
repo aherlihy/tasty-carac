@@ -17,6 +17,8 @@ class A {
 
   def test(): MyObject = a_instance
 
+  def test2: MyObject = a_instance
+
   private def privateTest(): MyObject = a_instance
 
   def withPrivateCall(): MyObject = privateTest()
@@ -39,11 +41,14 @@ class A {
 
 class B extends A with AA {
   val b_instance = MyObjectB()
+
   override val x = b_instance // overrides two values
   // no override for xx
   val sup = super.test()
 
   override def test(): MyObject = b_instance
+
+  override val test2 = b_instance
 
   private def privateTest(): MyObject = b_instance
 }
@@ -70,12 +75,14 @@ object Main {
     val a_x = a.x
     val a_xx = a.xx
     val a_t = a.test()
+    val a_t2 = a.test2
     val a_pc = a.withPrivateCall()
     val a_npc = a.withNonPrivateCall()
 
     val b_x = b.x
     val b_xx = b.xx
     val b_t = b.test()
+    val b_t2 = b.test2
     val b_pc = b.withPrivateCallB()
     val b_npc = b.withNonPrivateCallB()
     val b_sup = b.sup
