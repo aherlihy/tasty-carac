@@ -59,5 +59,15 @@ object Main {
     // val swap_v1 = swap.v1
     // val swap_v2 = swap.v2
 
+    val default = C1()
+    val c11 = C1()
+
+    def fun1(x: T = default) = x
+    def fun2(x: T = default, y: T) = x
+    def fun3(x: T = default, y: T) = x
+
+    val res1 = fun1()
+    val res2 = fun2(y = C1(), x = default)
+    val res3 = fun3(c11, default)
   }  
 }

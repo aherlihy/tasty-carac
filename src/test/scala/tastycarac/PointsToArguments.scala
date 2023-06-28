@@ -66,5 +66,19 @@ class PointsToArguments
     // assertEquals(swap_v1, c2)
     // assertEquals(swap_v2, c1)
   }
+
+  test("default arguments") {
+    val query = PointsToQuery(program.namedRelation("VarPointsTo"))
+
+    val default = query.pointsToSet("pointstoarguments.Main.main.default")
+    val res1 = query.pointsToSet("pointstoarguments.Main.main.res1")
+    val res2 = query.pointsToSet("pointstoarguments.Main.main.res2")
+    val res3 = query.pointsToSet("pointstoarguments.Main.main.res3")
+    val c11 = query.pointsToSet("pointstoarguments.Main.main.c11")
+
+    assertEquals(res1, default)
+    assertEquals(res2, default)
+    assertEquals(res3, c11) // make sure default is not used
+  }
 }
 
