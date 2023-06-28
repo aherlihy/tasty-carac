@@ -138,11 +138,7 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
 
   private def breakPattern(p: PatternTree)(using context: ContextInfo): Seq[Fact] = p match {
     case Alternative(trees) => trees.flatMap(breakPattern)
-    case Unapply(fun, implicits, patterns) => ???
-    case Bind(name, body, symbol) => ???
-    case ExprPattern(expr) => ???
-    case TypeTest(body, tpt) => ???
-    case WildcardPattern(tpe) => ???
+    case _ => Seq.empty
   }
 
   // method arguments, body and return
@@ -201,7 +197,7 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
     case Inlined(expr, caller, bindings) =>
       bindings.flatMap(breakTree) ++ breakExpr(expr, to)
     case Lambda(meth, tpt) =>
-      ???
+      breakTree(meth)
     case NamedArg(name, arg) =>
       breakExpr(arg, to)
     case Return(expr, from) =>
@@ -210,7 +206,7 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
         intermediate :+ FormalReturn(contextId, res)
       }).getOrElse(Seq.empty)
     case SeqLiteral(elems, elemtpt) =>
-      ???
+      elems.flatMap(breakTree)
     case Throw(expr) =>
       breakExpr(expr, None)
     case Try(expr, cases, finalizer) =>
@@ -285,7 +281,7 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
         StaticCall(table.getSymbolId(id.symbol), instruction, contextId) +: Nil
 
       // are there other cases?
-      case _ => ???
+      case _ => throw Error("unsupported call")
     }
 
     val assign = fun match {
