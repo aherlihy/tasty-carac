@@ -40,7 +40,7 @@ object Main {
       factsOnly: Boolean = false,
   )
 
-  val usage = "Usage: tastycarac [-h] [-m main] [-o output] classpath"
+  val usage = "Usage: tastycarac [-h] [-p] [-f] [-m main] [-o output] classpath"
 
   def main(args: Array[String]): Unit = {
     val argsList = args.toList

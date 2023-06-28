@@ -18,7 +18,12 @@ We need to use the `-m` option to indicate the entry point to the program
 (typically the main method).
 
 ```bash
-run -p -m pointstofun.Main.main -o <output-path> examples/pointstofun
+run -m listlib.Main.main examples/listlib
 ```
 
-The program creates a CSV file for each type of facts under `<output-path>`.
+Several options are available:
+* `--help`: show program help
+* `--print`: display the generated facts
+* `--factsonly`: only generate facts, no datalog execution
+* `--main`: entry point to the program (should look like `package.Main.main`)
+* `--output`: directory where input facts should be saved (optional, creates a CSV file for each relation)
