@@ -81,7 +81,7 @@ class Cons[+A](val first: A, val cons: SimpleList[A]) extends SimpleList[A] {
 class IntWrap(val c: Int)
 
 object Main {
-  @main def main(): Unit = {
+  def main(args: Array[String]): Unit = {
     val l: Cons[IntWrap] = IntWrap(0) :: IntWrap(1) :: IntWrap(2) :: IntWrap(3) :: Empty()
     val elt = l.get(3)
 

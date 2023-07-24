@@ -4,21 +4,20 @@ The `examples` directory contains examples that can be compiled and used as an i
 the program.
 
 ## Generate TASTy files
-The first step is to generate TASTy files from a `.scala` source file using the scala compiler.
-Suppose we want to analyze the *pointstofun* example:
-```bash
-scalac -d examples/pointstofun/ examples/pointstofun/PointsToFun.scala
-```
-
-There should be a new `.tasty` file for each class present in the source file.
 
 ## Generate the facts from the TASTy file
 Now we can run the program to generate the facts (from SBT).
 We need to use the `-m` option to indicate the entry point to the program
 (typically the main method).
 
+To run with the examples on the classpath use `runExample`:
 ```bash
-run -m listlib.Main.main examples/listlib
+runExample -m listlib.Main.main
+```
+
+Alternaitively, you can do
+```bash
+run -m <put your entry point here> <put the class directory containing the tasty files you want to inspect here>
 ```
 
 Several options are available:

@@ -3,7 +3,7 @@ package nested
 class A()
 
 object Main {
-  def main() = {
+  def main(args: Array[String]) = {
     def fun() = {
       def fun() = A()
       fun()

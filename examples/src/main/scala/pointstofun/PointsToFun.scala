@@ -6,7 +6,7 @@ class A1() extends A
 class A2() extends A
 
 object Main {
-  def main() = {
+  def main(args: Array[String]) = {
     val p = PointsToFun()
     p.fun1()
     p.fun2()
