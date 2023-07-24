@@ -2,6 +2,10 @@ ThisBuild / version := "0.1.0-SNAPSHOT"
 
 ThisBuild / scalaVersion := "3.2.1"
 
+ThisBuild / scalacOptions ++= Seq(
+  "-deprecation"
+)
+
 lazy val examples = (project in file("examples"))
  .settings(
    name := "Examples to analyze",

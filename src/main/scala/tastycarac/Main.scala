@@ -79,7 +79,7 @@ object Main {
         
         val pointstoSets: Map[String, Set[String]] = program.namedRelation("VarPointsTo").get().map {
           case Seq(from: String, to: String) => (from, to)
-        }.groupBy(_._1).mapValues(_.map(_._2)).toMap
+        }.groupBy(_._1).view.mapValues(_.map(_._2)).toMap
 
         println("========================================================")
         println(f"Computed points-to sets for ${pointstoSets.size} variables")
