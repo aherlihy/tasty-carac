@@ -108,7 +108,7 @@ object Main {
     }
 
   def inspect(input: Path, mainMethod: String) = {
-    val module = Dependency(Module(Organization("org.scala-lang"), ModuleName("scala3-library_3"), Map.empty), "3.2.2")
+    val module = Dependency(Module(Organization("org.scala-lang"), ModuleName("scala3-library_3"), Map.empty), BuildInfo.scalaVersion)
 
     val scalaStdLib = Fetch()
       .addDependencies(module)
