@@ -249,11 +249,9 @@ class PointsTo(trees: Iterable[ClassSymbol])(using Context) {
       case t: TypeMemberSymbol => typeToClassSymbol(t.aliasedType)
       case _ => ???
     }
-    case lambda: TypeLambda => lambda.resultType match {
-      case a: AppliedType => typeToClassSymbol(a.tycon)
-      case _ => ???
-    }
-    case _ => ???
+    case lambda: TypeLambda => typeToClassSymbol(lambda.resultType)
+    case a: AppliedType => typeToClassSymbol(a.tycon)
+    case _ => println(s"missing implementation for $t"); ???
   }
 
   private def typeToClassDef(t: Type): Option[ClassDef] = typeToClassSymbol(t).tree

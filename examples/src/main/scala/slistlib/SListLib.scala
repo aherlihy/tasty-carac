@@ -1,5 +1,5 @@
 
-package listlib
+package slistlib
 
 trait Printable {
   def str: String
@@ -17,7 +17,7 @@ abstract class SimpleList[+A] extends Printable {
   def get(i: Int): A
 
   def head: A
-  
+
   def tail: SimpleList[A]
 
   def reverse =
@@ -28,7 +28,7 @@ abstract class SimpleList[+A] extends Printable {
     rec(tail, head :: Empty())
 
   def repeat(n: Int): SimpleList[A] =
-    this ++ repeat(n-1)
+    this ++ repeat(n - 1)
 
   def last = get(this.size - 1)
 
@@ -40,6 +40,9 @@ abstract class SimpleList[+A] extends Printable {
   def slice(from: Int, len: Int): SimpleList[A] =
     if from == 0 then take(len)
     else tail.slice(from - 1, len)
+
+  def serialize(): StringWrap = StringWrap("serialized")
+
 }
 
 class Empty[A] extends SimpleList[A] {
@@ -79,11 +82,21 @@ class Cons[+A](val first: A, val cons: SimpleList[A]) extends SimpleList[A] {
 }
 
 class IntWrap(val c: Int)
+class StringWrap(val s: String)
 
 object Main {
   def main(args: Array[String]): Unit = {
-    val l: Cons[IntWrap] = IntWrap(0) :: IntWrap(1) :: IntWrap(2) :: IntWrap(3) :: Empty()
-    val elt = l.get(3)
+    val INPUT_LIST_VAR: Cons[IntWrap] = IntWrap(0) :: IntWrap(1) :: IntWrap(2) :: IntWrap(3) :: Empty()
+    val SERIALIZED_VAR = INPUT_LIST_VAR.serialize()
+
+    def deserialize(input: StringWrap): SimpleList[?] = new Empty[Any]
+
+    val DESER_VAR = deserialize(SERIALIZED_VAR)
+    val OUTPUT_VAR2 = DESER_VAR
+    val OUTPUT_VAR3 = OUTPUT_VAR2
+    val elt = DESER_VAR.get(3)
+    //val foo = IntWrap(0)
+    //val foo2 = foo
 
     def range(from: Int, to: Int): SimpleList[IntWrap] = {
       var build: SimpleList[IntWrap] = Empty()

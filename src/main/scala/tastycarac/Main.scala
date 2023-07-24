@@ -87,6 +87,8 @@ object Main {
 
         for ((variable, set) <- pointstoSets)
           println(f"- ${variable} -> {${set.mkString(", ")}}")
+
+        program.namedRelation("VarPointsTo").get().foreach(f => println(f.mkString("", "\t", "")))
       }
     }
   }
