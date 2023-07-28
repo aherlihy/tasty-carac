@@ -1,6 +1,6 @@
 package tastycarac.rulesets
 
-import datalog.dsl.Program
+import datalog.dsl.{Program, __}
 import tastycarac.rulesets.RuleSet
 
 object PointsToRuleSet extends RuleSet {
@@ -22,9 +22,9 @@ object PointsToRuleSet extends RuleSet {
     val StaticLookUp = program.relation[String]("StaticLookUp")
 
     val VarPointsTo = program.relation[String]("VarPointsTo")
-    val CallGraph = program.relation[String]()
-    val FldPointsTo = program.relation[String]()
-    val InterProcAssign = program.relation[String]()
+    val CallGraph = program.relation[String]("CallGraph")
+    val FldPointsTo = program.relation[String]("FldPointsTo")
+    val InterProcAssign = program.relation[String]("InterProcAssign")
     val Reachable = program.relation[String]("Reachable")
 
     val Delegate = program.relation[String]("Delegate")
@@ -42,65 +42,104 @@ object PointsToRuleSet extends RuleSet {
     val toMeth, thiss, thisFrom, invo, sig, inMeth, heapT, m, n, actualFld = program.variable()
     val classA, classB, classC, sigA, sigB, sigC = program.variable()
 
-    VarPointsTo(varr, heap) :- (Reachable(meth), Alloc(varr, heap, meth))
-    VarPointsTo(to, heap) :- (Move(to, from), VarPointsTo(from, heap))
-    FldPointsTo(baseH, fld, heap) :- (Store(base, fld, from), VarPointsTo(from, heap), VarPointsTo(base, baseH))
-    VarPointsTo(to, heap) :- (Load(to, base, fld, inMeth), VarPointsTo(base, baseH), FldPointsTo(baseH, fld, heap))
+    VarPointsTo(varr, heap) :- (
+      Reachable(meth),
+      Alloc(varr, heap, meth))
+    VarPointsTo(to, heap) :- (
+      Move(to, from),
+      VarPointsTo(from, heap))
+    FldPointsTo(baseH, fld, heap) :- (
+      Store(base, fld, from),
+      VarPointsTo(from, heap),
+      VarPointsTo(base, baseH))
+    VarPointsTo(to, heap) :- (
+      Load(to, base, fld, inMeth),
+      VarPointsTo(base, baseH),
+      FldPointsTo(baseH, fld, heap))
 
-    Reachable(toMeth) :-
-      (VCall(base, sig, invo, inMeth), Reachable(inMeth),
-        VarPointsTo(base, heap),
-        HeapType(heap, heapT), LookUp(heapT, sig, toMeth),
-        ThisVar(toMeth, thiss))
+    Reachable(toMeth) :- (
+      VCall(base, sig, invo, inMeth),
+      Reachable(inMeth),
+      VarPointsTo(base, heap),
+      HeapType(heap, heapT),
+      LookUp(heapT, sig, toMeth),
+      ThisVar(toMeth, thiss))
 
-    VarPointsTo(thiss, heap) :-
-      (VCall(base, sig, invo, inMeth), Reachable(inMeth),
-        VarPointsTo(base, heap),
-        HeapType(heap, heapT), LookUp(heapT, sig, toMeth),
-        ThisVar(toMeth, thiss))
+    VarPointsTo(thiss, heap) :- (
+      VCall(base, sig, invo, inMeth),
+      Reachable(inMeth),
+      VarPointsTo(base, heap),
+      HeapType(heap, heapT),
+      LookUp(heapT, sig, toMeth),
+      ThisVar(toMeth, thiss))
 
-    CallGraph(invo, toMeth) :-
-      (VCall(base, sig, invo, inMeth), Reachable(inMeth),
-        VarPointsTo(base, heap),
-        HeapType(heap, heapT), LookUp(heapT, sig, toMeth),
-        ThisVar(toMeth, thiss))
+    CallGraph(invo, toMeth) :- (
+      VCall(base, sig, invo, inMeth),
+      Reachable(inMeth),
+      VarPointsTo(base, heap),
+      HeapType(heap, heapT),
+      LookUp(heapT, sig, toMeth),
+      ThisVar(toMeth, thiss))
 
     // rules for dynamic val
-    Reachable(toMeth ) :-
-        (Load(to, base, sig, inMeth), Reachable(inMeth),
-        VarPointsTo(base, heap),
-        HeapType(heap, heapT), LookUp(heapT, sig, toMeth),
-        ThisVar(toMeth, thiss),
-        FormalReturn(toMeth, from))
+    Reachable(toMeth ) :- (
+      Load(to, base, sig, inMeth),
+      Reachable(inMeth),
+      VarPointsTo(base, heap),
+      HeapType(heap, heapT),
+      LookUp(heapT, sig, toMeth),
+      ThisVar(toMeth, thiss),
+      FormalReturn(toMeth, from))
 
-    VarPointsTo(thiss, heap) :-
-        (Load(to, base, sig, inMeth), Reachable(inMeth),
-        VarPointsTo(base, heap),
-        HeapType(heap, heapT), LookUp(heapT, sig, toMeth),
-        ThisVar(toMeth, thiss),
-        FormalReturn(toMeth, from))
+    VarPointsTo(thiss, heap) :- (
+      Load(to, base, sig, inMeth),
+      Reachable(inMeth),
+      VarPointsTo(base, heap),
+      HeapType(heap, heapT),
+      LookUp(heapT, sig, toMeth),
+      ThisVar(toMeth, thiss),
+      FormalReturn(toMeth, from))
 
-    InterProcAssign(to, from) :-
-        (Load(to, base, sig, inMeth), Reachable(inMeth),
-        VarPointsTo(base, heap),
-        HeapType(heap, heapT), LookUp(heapT, sig, toMeth),
-        ThisVar(toMeth, thiss),
-        FormalReturn(toMeth, from))
+    InterProcAssign(to, from) :- (
+      Load(to, base, sig, inMeth),
+      Reachable(inMeth),
+      VarPointsTo(base, heap),
+      HeapType(heap, heapT),
+      LookUp(heapT, sig, toMeth),
+      ThisVar(toMeth, thiss),
+      FormalReturn(toMeth, from))
 
-    InterProcAssign(to, from) :- (CallGraph(invo, meth), FormalArg(meth, m, n, to), ActualArg(invo, m, n, from))
+    InterProcAssign(to, from) :- (
+      CallGraph(invo, meth),
+      FormalArg(meth, m, n, to),
+      ActualArg(invo, m, n, from))
 
-    InterProcAssign(to, from) :- (CallGraph(invo, meth), FormalReturn(meth, from), ActualReturn(invo, to))
+    InterProcAssign(to, from) :- (
+      CallGraph(invo, meth),
+      FormalReturn(meth, from),
+      ActualReturn(invo, to))
 
-    VarPointsTo(to, heap) :- (InterProcAssign(to, from), VarPointsTo(from, heap))
+    VarPointsTo(to, heap) :- (
+      InterProcAssign(to, from),
+      VarPointsTo(from, heap))
 
-    Reachable(toMeth) :- (StaticCall(toMeth, invo, inMeth), Reachable(inMeth))
+    Reachable(toMeth) :- (
+      StaticCall(toMeth, invo, inMeth),
+      Reachable(inMeth))
 
-    CallGraph(invo, toMeth) :- (StaticCall(toMeth, invo, inMeth), Reachable(inMeth))
+    CallGraph(invo, toMeth) :- (
+      StaticCall(toMeth, invo, inMeth),
+      Reachable(inMeth))
 
     // without negation support, we generate NotDefines facts
     LookUp(classC, sig, meth) :- DefinesWith(classC, sig, meth)
-    LookUp(classC, sigA, sigB) :- (LookUp(classB, sigA, sigB), NotDefines(classC, sigB), Extends(classC, classB))
-    DefinesWith(classC, sigA, sigC) :- (DefinesWith(classC, sigB, sigC), DefinesWith(classB, sigA, sigB))
+    LookUp(classC, sigA, sigB) :- (
+      LookUp(classB, sigA, sigB),
+      NotDefines(classC, sigB),
+      Extends(classC, classB))
+    DefinesWith(classC, sigA, sigC) :- (
+      DefinesWith(classC, sigB, sigC),
+      DefinesWith(classB, sigA, sigB))
     DefinesWith(classC, sigC, sigC) :- DefinesWith(classC, sigB, sigC)
 
     // with negations we would have something like:
@@ -111,27 +150,49 @@ object PointsToRuleSet extends RuleSet {
     // Defines(classC, sigA) :- DefinesWith(classC, sigA, sigC)
 
     // super calls
-    Reachable(toMeth) :-
-        (SuperCall(toMeth, invo, inMeth), Reachable(inMeth),
-        ThisVar(inMeth, thisFrom), VarPointsTo(thisFrom, heap),
-        ThisVar(toMeth, thiss))
+    Reachable(toMeth) :- (
+      SuperCall(toMeth, invo, inMeth),
+      Reachable(inMeth),
+      ThisVar(inMeth, thisFrom),
+      VarPointsTo(thisFrom, heap),
+      ThisVar(toMeth, thiss))
 
-    VarPointsTo(thiss, heap) :-
-        (SuperCall(toMeth, invo, inMeth), Reachable(inMeth),
-        ThisVar(inMeth, thisFrom), VarPointsTo(thisFrom, heap),
-        ThisVar(toMeth, thiss))
+    VarPointsTo(thiss, heap) :- (
+      SuperCall(toMeth, invo, inMeth),
+      Reachable(inMeth),
+      ThisVar(inMeth, thisFrom),
+      VarPointsTo(thisFrom, heap),
+      ThisVar(toMeth, thiss))
 
-    CallGraph(invo, toMeth) :-
-        (SuperCall(toMeth, invo, inMeth), Reachable(inMeth),
-        ThisVar(inMeth, thisFrom), VarPointsTo(thisFrom, heap),
-        ThisVar(toMeth, thiss))
+    CallGraph(invo, toMeth) :- (
+      SuperCall(toMeth, invo, inMeth),
+      Reachable(inMeth),
+      ThisVar(inMeth, thisFrom),
+      VarPointsTo(thisFrom, heap),
+      ThisVar(toMeth, thiss))
 
-    VarPointsTo(to, heap) :-
-      (Load(to, base, fld, inMeth), VarPointsTo(base, baseH),
-      HeapType(baseH, heapT), LookUp(heapT, fld, actualFld),
+    VarPointsTo(to, heap) :- (
+      Load(to, base, fld, inMeth),
+      VarPointsTo(base, baseH),
+      HeapType(baseH, heapT),
+      LookUp(heapT, fld, actualFld),
       FieldValDef(actualFld, from),
       VarPointsTo(from, heap))
 
-    VarPointsTo
+    val des, ser, input, F, instr, invF, invInstr, ctx = program.variable()
+
+    val Equiv = program.relation[String]("Equiv")
+    val Res = program.relation[String]("Res")
+
+    Equiv(des, input) :- (
+      ActualReturn(instr, des),
+      StaticCall(F, instr, ctx),
+      Reachable(ctx),
+      ActualArg(instr, __, __, ser),
+      ActualReturn(invInstr, ser),
+      StaticCall(invF, invInstr, ctx),
+      ActualArg(invInstr, __, __, input)
+    )
+    Equiv
   }
 }

@@ -1,20 +1,20 @@
 package tastycarac
 
 import tastyquery.Classpaths.Classpath
-import java.nio.file.FileSystems
+
+import java.nio.file.{FileSystems, Files, Path, Paths}
 import tastyquery.jdk.ClasspathLoaders
 import tastyquery.Contexts
 import tastyquery.Contexts.Context
 import tastyquery.Contexts.ctx
-import java.nio.file.Path
 import tastyquery.Names.*
 import tastyquery.Symbols.ClassSymbol
 import tastyquery.Symbols.ClassTypeParamSymbol
 import tastyquery.Symbols.TermSymbol
 import tastyquery.Trees.*
+
 import scala.annotation.meta.param
-import scala.util.Failure
-import scala.util.Success
+import scala.util.{Failure, Success, Using}
 import tastycarac.PointsTo
 import coursier.Fetch
 import coursier.Dependency
@@ -56,7 +56,7 @@ object Main {
         println(f" - ${f.productPrefix}${f.productIterator.mkString("(", ", ", ")")}")
 
       if config.output.isDefined then
-        Facts.exportFacts(facts, config.output.get) match {
+        Facts.exportFacts(facts, Paths.get(config.output.get.toString, "facts")) match {
           case Failure(e) =>
             println(f"Something went wrong while saving the facts: ${e}")
           case Success(v) =>
@@ -75,7 +75,8 @@ object Main {
           program.namedRelation(f.productPrefix).apply(f.productIterator.map(_.toString).toSeq:_*) :- ()
         }
 
-        toSolve.solve()
+        println(s"RES=${toSolve.solve()}")
+//        println(engine.storageManager.toString)
         
         val pointstoSets: Map[String, Set[String]] = program.namedRelation("VarPointsTo").get().map {
           case Seq(from: String, to: String) => (from, to)
@@ -88,7 +89,22 @@ object Main {
         for ((variable, set) <- pointstoSets)
           println(f"- ${variable} -> {${set.mkString(", ")}}")
 
-        program.namedRelation("VarPointsTo").get().foreach(f => println(f.mkString("", "\t", "")))
+        if config.output.isDefined then
+          Seq(
+            "VarPointsTo",
+            "FldPointsTo",
+            "DefinesWith",
+            "LookUp",
+            "CallGraph",
+            "InterProcAssign",
+            "Reachable",
+            "FldPointsTo",
+            "Equiv"
+          ).foreach(idb =>
+            Using(Files.newBufferedWriter(Paths.get(config.output.get.toString, "expected", idb + ".csv"))) { writer =>
+              program.namedRelation(idb).solve().foreach(f => writer.write(f.mkString("", "\t", "\n")))
+            }
+          )
       }
     }
   }
