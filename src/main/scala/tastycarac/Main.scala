@@ -86,8 +86,8 @@ object Main {
         println(f"Computed points-to sets for ${pointstoSets.size} variables")
         println("Inferred points-to sets:")
 
-        for ((variable, set) <- pointstoSets)
-          println(f"- ${variable} -> {${set.mkString(", ")}}")
+//        for ((variable, set) <- pointstoSets)
+//          println(f"- ${variable} -> {${set.mkString(", ")}}")
 
         if config.output.isDefined then
           Seq(
@@ -99,7 +99,8 @@ object Main {
             "InterProcAssign",
             "Reachable",
             "FldPointsTo",
-            "Equiv"
+            "Equiv",
+            "EquivToOutput"
           ).foreach(idb =>
             Using(Files.newBufferedWriter(Paths.get(config.output.get.toString, "expected", idb + ".csv"))) { writer =>
               program.namedRelation(idb).solve().foreach(f => writer.write(f.mkString("", "\t", "\n")))

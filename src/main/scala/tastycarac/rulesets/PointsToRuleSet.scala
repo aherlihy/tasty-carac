@@ -1,6 +1,7 @@
 package tastycarac.rulesets
 
 import datalog.dsl.{Program, __}
+import tastycarac.Facts
 import tastycarac.rulesets.RuleSet
 
 object PointsToRuleSet extends RuleSet {
@@ -179,20 +180,46 @@ object PointsToRuleSet extends RuleSet {
       FieldValDef(actualFld, from),
       VarPointsTo(from, heap))
 
-    val des, ser, input, F, instr, invF, invInstr, ctx = program.variable()
+    val input, output, F, instr, invF, invInstr, ctx, v0, v1, v2, heap2, heap1, arg = program.variable()
 
     val Equiv = program.relation[String]("Equiv")
-    val Res = program.relation[String]("Res")
+    val InverseFns = program.relation[String]("InverseFns")
+    val VarEquiv = program.relation[String]("VarEquiv")
+    val EquivToOutput = program.relation[String]("EquivToOutput")
 
-    Equiv(des, input) :- (
-      ActualReturn(instr, des),
+    InverseFns("slistlib.Main.main.deserialize", "slistlib.Main.main.serialize") :- ()
+    InverseFns("slistlib.Main.main.serialize", "slistlib.Main.main.deserialize") :- ()
+    VarEquiv(v0, v1) :- (VarPointsTo(v0, heap), VarPointsTo(v1, heap))
+
+    Equiv(output, input) :- (
+      VarEquiv(output, v2),
+      ActualReturn(instr, v2),
       StaticCall(F, instr, ctx),
       Reachable(ctx),
-      ActualArg(instr, __, __, ser),
-      ActualReturn(invInstr, ser),
+      ActualArg(instr, __, __, arg),
+      VarEquiv(arg, v1),
+      ActualReturn(invInstr, v1),
       StaticCall(invF, invInstr, ctx),
-      ActualArg(invInstr, __, __, input)
+      InverseFns(F, invF),
+      ActualArg(invInstr, __, __, v0),
+      VarEquiv(input, v0)
     )
-    Equiv
+
+//    Equiv(output, input) :- SimpleAssign(output, input)
+//    Equiv(output, input) :- SimpleAssign(input, output)
+
+//      Res(to) :- SimpleAssign(to, "slistlib.Main.main.DESERIALIZED_VAR")
+//    Res(instr) :- ActualReturn(instr, "slistlib.Main.main.DESERIALIZED_VAR")
+//    Res(F, invInstr, instr) :- (
+//      ActualReturn(instr, "slistlib.Main.main.DESERIALIZED_VAR"),
+//      StaticCall(F, instr, ctx),
+//      Reachable(ctx),
+//      ActualArg(instr, __, __, ser),
+//      ActualReturn(invInstr, ser)
+//    )
+    EquivToOutput(v0) :- Equiv("slistlib.Main.main.OUTPUT_VAR", v0)
+//    Res(ser) :- Equiv(ser, "slistlib.Main.main.OUTPUT_VAR")
+//    SimpleAssign
+    EquivToOutput
   }
 }
