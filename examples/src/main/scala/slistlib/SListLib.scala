@@ -79,16 +79,16 @@ class Cons[+A](val first: A, val cons: SimpleList[A]) extends SimpleList[A] {
 }
 
 class IntWrap(val c: Int):
-  override def toString: String = c.toString
+  override def toString: String = Integer.toString(c)
 class StringWrap(val s: String):
-  override def toString: String = s.toString
+  override def toString: String = s
 
 object Main {
   def main(args: Array[String]): Unit = {
     def display(l: SimpleList[IntWrap]) =
       var i = 0;
       while (i < l.size) {
-        println(l.get(i).c)
+        System.out.println(l.get(i).c)
         i += 1
       }
 
@@ -98,7 +98,7 @@ object Main {
       var i = 0
 
       while (i < split.length) {
-        build = IntWrap(split(i).toInt) :: build
+        build = IntWrap(java.lang.Integer.parseInt(split(i))) :: build
         i += 1
       }
       build
@@ -115,20 +115,22 @@ object Main {
     // INPUT_VAR is input variable, which gets serialized and deserialized, and eventually assigned to OUTPUT_VAR
     val INPUT_VAR: Cons[IntWrap] = IntWrap(0) :: IntWrap(1) :: IntWrap(2) :: IntWrap(3) :: Empty()
 
-    println("input var: ")
+    System.out.println("input var: ")
     display(INPUT_VAR)
 
-    val INT_INPUT_1 = INPUT_VAR
-    val INT_INPUT_2 = INT_INPUT_1
+//    val INT_INPUT_1 = INPUT_VAR
+//    val INT_INPUT_2 = INT_INPUT_1
 
-    val SERIALIZED_VAR = serialize(INT_INPUT_2)
+//    val SERIALIZED_VAR = serialize(INT_INPUT_2)
+    val SERIALIZED_VAR = serialize(INPUT_VAR)
 
     val INT_SERIALIZED = SERIALIZED_VAR
 
-    val INT_OUTPUT_1 = deserialize(INT_SERIALIZED)
+//    val INT_OUTPUT_1 = deserialize(INT_SERIALIZED)
+    val OUTPUT_VAR = deserialize(INT_SERIALIZED)
 
-    val INT_OUTPUT_2 = INT_OUTPUT_1
-    val OUTPUT_VAR = INT_OUTPUT_2
+//    val INT_OUTPUT_2 = INT_OUTPUT_1
+//    val OUTPUT_VAR = INT_OUTPUT_2
 
     val elt = OUTPUT_VAR.get(3)
 
@@ -150,7 +152,7 @@ object Main {
     val sl = rng.slice(10, 15)
 //    display(sl)
 
-    println("output var: ")
+    System.out.println("output var: ")
     display(OUTPUT_VAR)
   }
 }

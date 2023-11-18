@@ -192,8 +192,8 @@ object PointsToRuleSet extends RuleSet {
     VarEquiv(v0, v1) :- (VarPointsTo(v0, heap), VarPointsTo(v1, heap))
 
     Equiv(output, input) :- (
-      VarEquiv(output, v2),
-      ActualReturn(instr, v2),
+//      VarEquiv(output, v2),
+      ActualReturn(instr, output),
       StaticCall(F, instr, ctx),
       Reachable(ctx),
       ActualArg(instr, __, __, arg),
@@ -201,8 +201,8 @@ object PointsToRuleSet extends RuleSet {
       ActualReturn(invInstr, v1),
       StaticCall(invF, invInstr, ctx),
       InverseFns(F, invF),
-      ActualArg(invInstr, __, __, v0),
-      VarEquiv(input, v0)
+      ActualArg(invInstr, __, __, input),
+//      VarEquiv(input, v0)
     )
 
 //    Equiv(output, input) :- SimpleAssign(output, input)
