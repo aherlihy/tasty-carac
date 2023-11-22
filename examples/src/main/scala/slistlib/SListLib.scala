@@ -114,19 +114,8 @@ object Main {
 
     // INPUT_VAR is input variable, which gets serialized and deserialized, and eventually assigned to OUTPUT_VAR
     val INPUT_VAR: Cons[IntWrap] = IntWrap(0) :: IntWrap(1) :: IntWrap(2) :: IntWrap(3) :: Empty()
-
-    System.out.println("input var: ")
-    display(INPUT_VAR)
-
-//    val INT_INPUT_1 = INPUT_VAR
-//    val INT_INPUT_2 = INT_INPUT_1
-
-//    val SERIALIZED_VAR = serialize(INT_INPUT_2)
     val SERIALIZED_VAR = serialize(INPUT_VAR)
-
     val INT_SERIALIZED = SERIALIZED_VAR
-
-//    val INT_OUTPUT_1 = deserialize(INT_SERIALIZED)
     val OUTPUT_VAR = deserialize(INT_SERIALIZED)
 
 //    val INT_OUTPUT_2 = INT_OUTPUT_1
